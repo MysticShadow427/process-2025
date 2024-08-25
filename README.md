@@ -13,5 +13,8 @@
 - need to see shape issues by running a batch :)
 - fbank features 512 karne ka try karo varna usko bhi projection se paas karna hoga
 - max lenght of text data
+- think more multitask learning objectives : mainly focusing on semantic fluency and phonetic fluency.
+- come up with a loss function that makes text embeddings and speech embeddings similar. - *done*
+- does adding layernorm after all conformer blocks and gated cross attention blocks makes life good?
 
 `512` should be the dimension and before sending to bert we need to project it to 768.

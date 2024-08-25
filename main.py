@@ -44,6 +44,7 @@ def main():
         val_dataset=val_dataset,
         batch_size=cfg['training']['batch_size'],
         learning_rate=cfg['training']['learning_rate'],
+        wt_decay= cfg['weight_decay'],
         device=device
     )
 

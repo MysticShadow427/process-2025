@@ -55,6 +55,8 @@ class CustomModel(nn.Module):
         x = self.conformer_blocks[-1](x)
         # Pass through bert for textual understanding
         x = self.bert_projection(x)
+        speech_embeddings = x
+        
         _, x = self.bert(x) 
 
         # Classification head
@@ -63,7 +65,7 @@ class CustomModel(nn.Module):
         # Regression head
         regression_output = F.leaky_relu(self.regression_head(x))
 
-        return logits, regression_output
+        return logits, regression_output, speech_embeddings
 
 def exists(val):
     return val is not None
@@ -266,8 +268,8 @@ class CustomBERT(nn.Module):
         super(CustomBERT, self).__init__()
         self.bert = bert_model
         
-        # for param in self.bert.parameters():
-        #     param.requires_grad = False
+        for param in self.bert.parameters():
+            param.requires_grad = False
 
     def forward(self, custom_input):
         # Bypass the embedding layer

@@ -6,11 +6,11 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-from custom_losses import classification_loss_function, regression_loss_function
+from custom_losses import RMSELoss,ClassificationLoss,SimilarityLoss
 from custom_dataloader import collate_fn
 
 class Trainer:
-    def __init__(self, model, train_dataset, val_dataset, batch_size=8, learning_rate=1e-4, device='cuda'):
+    def __init__(self, model, train_dataset, val_dataset, batch_size=8, learning_rate=1e-4, wt_decay=1e-3,device='cuda'):
         self.model = model.to(device)
         self.device = device
         self.batch_size = batch_size
@@ -19,16 +19,18 @@ class Trainer:
         self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, collate_fn=collate_fn)
         self.val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, collate_fn=collate_fn)
         
-        self.optimizer = AdamW(self.model.parameters(), lr=self.learning_rate)
+        self.optimizer = AdamW(self.model.parameters(), lr=self.learning_rate,weight_decay=wt_decay)
         
-        self.classification_criterion = classification_loss_function
-        self.regression_criterion = regression_loss_function
+        self.classification_criterion = ClassificationLoss()
+        self.regression_criterion = RMSELoss()
+        self.similarity_criterion = SimilarityLoss()
 
     def train(self):
         self.model.train()
         total_loss = 0
         total_classification_loss = 0
         total_regression_loss = 0
+        total_similarity_loss = 0
 
         for batch_features, (classification_labels, regression_labels) in tqdm(self.train_loader, desc="Training"):
             
@@ -37,21 +39,24 @@ class Trainer:
             egmap_features = batch_features['egmap_features'].to(self.device)
             trill_features = batch_features['trill_features'].to(self.device)
             phonetic_features = batch_features['phonetic_features'].to(self.device)
+            bert_features = batch_features['bert_features'].to(self.device)
 
             classification_labels = classification_labels.to(self.device)
             regression_labels = regression_labels.to(self.device)
 
             self.optimizer.zero_grad()
 
-            logits, regression_output = self.model(fbank_features, wav2vec2_features, egmap_features, trill_features, phonetic_features)
+            logits, regression_output, speech_features = self.model(fbank_features, wav2vec2_features, egmap_features, trill_features, phonetic_features)
 
             classification_loss = self.classification_criterion(logits, classification_labels)
             regression_loss = self.regression_criterion(regression_output, regression_labels)
+            similarity_loss = self.similarity_criterion(speech_features,bert_features,classification_labels)
 
-            loss = classification_loss + regression_loss
+            loss = classification_loss + regression_loss + similarity_loss
             total_loss += loss.item()
             total_classification_loss += classification_loss.item()
             total_regression_loss += regression_loss.item()
+            total_similarity_loss += similarity_loss.item()
 
             loss.backward()
             self.optimizer.step()
@@ -59,18 +64,21 @@ class Trainer:
         avg_loss = total_loss / len(self.train_loader)
         avg_classification_loss = total_classification_loss / len(self.train_loader)
         avg_regression_loss = total_regression_loss / len(self.train_loader)
+        avg_similarity_loss = total_similarity_loss / len(self.train_loader)
 
         print(f"Training loss: {avg_loss:.4f}")
         print(f"Classification loss: {avg_classification_loss:.4f}")
         print(f"Regression loss: {avg_regression_loss:.4f}")
+        print(f"Similarity loss: {avg_similarity_loss:.4f}")
 
-        return avg_loss, avg_classification_loss, avg_regression_loss
+        return avg_loss, avg_classification_loss, avg_regression_loss, avg_similarity_loss
 
     def validate(self):
         self.model.eval()
         total_loss = 0
         total_classification_loss = 0
         total_regression_loss = 0
+        total_similarity_loss = 0
         correct_classification = 0
         total_samples = 0
 
@@ -84,15 +92,17 @@ class Trainer:
                 classification_labels = classification_labels.to(self.device)
                 regression_labels = regression_labels.to(self.device)
 
-                logits, regression_output = self.model(fbank_features, wav2vec2_features, bert_features)
+                logits, regression_output, speech_features = self.model(fbank_features, wav2vec2_features, bert_features)
 
                 classification_loss = self.classification_criterion(logits, classification_labels)
                 regression_loss = self.regression_criterion(regression_output, regression_labels)
+                similarity_loss = self.similarity_criterion(speech_features,bert_features,classification_labels)
 
-                loss = classification_loss + regression_loss
+                loss = classification_loss + regression_loss + similarity_loss
                 total_loss += loss.item()
                 total_classification_loss += classification_loss.item()
                 total_regression_loss += regression_loss.item()
+                total_similarity_loss += similarity_loss.item()
 
                 _, predicted = torch.max(logits, 1)
                 correct_classification += (predicted == classification_labels).sum().item()
@@ -104,6 +114,7 @@ class Trainer:
         avg_loss = total_loss / len(self.val_loader)
         avg_classification_loss = total_classification_loss / len(self.val_loader)
         avg_regression_loss = total_regression_loss / len(self.val_loader)
+        avg_similarity_loss = total_similarity_loss / len(self.val_loader)
         accuracy = correct_classification / total_samples
 
         all_preds = np.array(all_preds)
@@ -119,6 +130,7 @@ class Trainer:
         print(f"Validation loss: {avg_loss:.4f}")
         print(f"Classification loss: {avg_classification_loss:.4f}")
         print(f"Regression loss: {avg_regression_loss:.4f}")
+        print(f"Similarity loss: {avg_similarity_loss:.4f}")
         print(f"Accuracy: {accuracy:.4f}")
         print(f"Macro F1: {macro_f1:.4f}")
         print(f"Macro Precision: {precision:.4f}")
@@ -126,7 +138,7 @@ class Trainer:
         print(f"Weighted F1 Score: {f1:.4f}")
         print(f"RMSE: {rmse:.4f}")
 
-        return avg_loss, avg_classification_loss, avg_regression_loss
+        return avg_loss, avg_classification_loss, avg_regression_loss, avg_similarity_loss
 
     def fit(self, epochs):
         train_losses = []
@@ -135,10 +147,10 @@ class Trainer:
         for epoch in range(epochs):
             print(f"\nEpoch {epoch+1}/{epochs}")
     
-            avg_train_loss, avg_train_classification_loss, avg_train_regression_loss = self.train()
+            avg_train_loss, avg_train_classification_loss, avg_train_regression_loss,_ = self.train()
             train_losses.append(avg_train_loss)
 
-            avg_val_loss, avg_val_classification_loss, avg_val_regression_loss = self.validate()
+            avg_val_loss, avg_val_classification_loss, avg_val_regression_loss,_ = self.validate()
             val_losses.append(avg_val_loss)
         
         self.plot_loss_curves(train_losses, val_losses)

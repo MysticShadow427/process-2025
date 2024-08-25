@@ -20,6 +20,14 @@ class CustomAudioTextDataset(Dataset):
         self.data = pd.read_csv(csv_file)
         self.wav2vec2_featureExtractor = Wav2Vec2FeatureExtractor.from_pretrained(wav2vec2_model_name)
         self.wav2vec2_model = Wav2Vec2Model.from_pretrained(wav2vec2_model_name).to('cuda')
+        for param in self.wav2vec2_featureExtractor:
+            param.requires_grad = False
+        for param in self.wav2vec2_model:
+            param.requires_grad = False
+        self.tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+        self.bert = AutoModel.from_pretrained('/content/drive/MyDrive/process2025/bert_model').to('cuda')
+        for param in self.bert:
+            param.requires_grad = False
         self.smile = opensmile.Smile(
             feature_set=opensmile.FeatureSet.eGeMAPSv02,
             feature_level=opensmile.FeatureLevel.LowLevelDescriptors,
@@ -39,7 +47,7 @@ class CustomAudioTextDataset(Dataset):
         
         row = self.data.iloc[idx]
         audio_path = row['audio_path']
-        # text = row['text']
+        text = row['text']
         classification_label = row['classification_label']
         regression_label = row['regression_label']
 
@@ -74,12 +82,33 @@ class CustomAudioTextDataset(Dataset):
         # phonetic features - allosaurus
         phonetic_features = None
 
+        # bert text embeddings
+        encoding = self.tokenizer.encode_plus(
+            text,
+            add_special_tokens=True,
+            max_length=self.max_len,
+            return_token_type_ids=False,
+            padding='max_length',
+            return_attention_mask=True,
+            return_tensors='pt',
+            truncation=True
+        )
+
+        input_ids = encoding['input_ids']
+        attention_mask = encoding['attention_mask']
+
+        with torch.no_grad():
+            bert_embeddings,_ = self.bert(input_ids,attention_mask)
+
+
+
         features = {
             'fbank' : torch.tensor(fbank,dtype=torch.float),
             'wav2vec2_embeddings' : torch.tensor(wav2vec2_embeddings,dtype=torch.float),
             'egmaps_feats' : torch.tensor(egmaps_feats,dtype=torch.float),
             'trill_embeddings' : torch.tensor(trill_embeddings,dtype=torch.float),
-            'phonetic_features' : torch.tensor(phonetic_features,dtype=torch.float)
+            'phonetic_features' : torch.tensor(phonetic_features,dtype=torch.float),
+            'bert_embeddings' : bert_embeddings
         }
 
         return features, (torch.tensor(classification_label, dtype=torch.long), torch.tensor(regression_label, dtype=torch.float))
@@ -93,6 +122,17 @@ def collate_fn(batch):
     egmap_features = [item['egmaps_feats'] for item in features]
     trill_features = [item['trill_embeddings'] for item in features]
     phonetic_features = [item['phonetic_features'] for item in features]
+    bert_features = [item['bert_embeddings'] for item in features]
+
+    def normalize(features):
+        features = torch.stack(features)
+        mean = features.mean(dim=0, keepdim=True)
+        std = features.std(dim=0, keepdim=True)
+        return (features - mean) / (std + 1e-8)
+    
+    egmap_features = normalize(egmap_features)
+    trill_features = normalize(trill_features)
+    phonetic_features = normalize(phonetic_features)
 
     fbank_features = pad_sequence(fbank_features, batch_first=True)
     wav2vec2_features = pad_sequence(wav2vec2_features, batch_first=True)
@@ -108,7 +148,8 @@ def collate_fn(batch):
         'wav2vec2_features': wav2vec2_features,
         'egmap_features': egmap_features,
         'trill_features': trill_features,
-        'phonetic_features': phonetic_features
+        'phonetic_features': phonetic_features,
+        'bert_features' : bert_features
     }
 
     return feats, (classification_labels, regression_labels)
