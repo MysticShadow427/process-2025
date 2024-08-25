@@ -1,0 +1,20 @@
+model:
+  type: YourModel  # Replace with actual model type if needed
+
+data:
+  train_csv_path: path_to_train_csv
+  val_csv_path: path_to_validation_csv
+
+fbanks:
+  num_mel_bins: 80
+  sample_frequency: 16000
+  use_energy: False
+
+wav2vec2_model_name: facebook/wav2vec2-base-960h
+bert_model_name: bert-base-uncased
+
+training:
+  batch_size: 8
+  learning_rate: 1e-4
+  epochs: 10
+  checkpoint_path: model_checkpoint.pth
