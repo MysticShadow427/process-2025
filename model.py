@@ -277,3 +277,10 @@ class ConformerBlock(nn.Module):
         x = self.ff2(x) + x
         x = self.post_norm(x)
         return x
+
+# https://github.com/codertimo/BERT-pytorch/tree/master/bert_pytorch/model
+# we can use the above link to add a bert there, we need weights main this is this
+
+# or else we need to train a custom transformer encoder and then use it here
+
+# also adding next token prediction task here is very tough
