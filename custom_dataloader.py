@@ -1,17 +1,34 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
+from torch.nn.utils.rnn import pad_sequence
 import torchaudio
-from transformers import Wav2Vec2Processor, Wav2Vec2Model, AutoTokenizer, AutoModel
+import audiofile
+import librosa
+import opensmile
+from torchaudio.transforms import Resample
+from transformers import Wav2Vec2FeatureExtractor, Wav2Vec2Model, AutoTokenizer, AutoModel
 import pandas as pd
+import tensorflow_hub as hub
+import numpy as np
+import tensorflow.compat.v2 as tf
+tf.enable_v2_behavior()
+assert tf.executing_eagerly()
 
 
 class CustomAudioTextDataset(Dataset):
-    def __init__(self, csv_file, wav2vec2_model_name, bert_model_name, fbank_params, max_length=512):
+    def __init__(self, csv_file, wav2vec2_model_name, fbank_params, max_length=100):
         self.data = pd.read_csv(csv_file)
-        self.wav2vec2_processor = Wav2Vec2Processor.from_pretrained(wav2vec2_model_name)
-        self.wav2vec2_model = Wav2Vec2Model.from_pretrained(wav2vec2_model_name)
-        self.bert_tokenizer = AutoTokenizer.from_pretrained(bert_model_name)
-        self.bert_model = AutoModel.from_pretrained(bert_model_name)
+        self.wav2vec2_featureExtractor = Wav2Vec2FeatureExtractor.from_pretrained(wav2vec2_model_name)
+        self.wav2vec2_model = Wav2Vec2Model.from_pretrained(wav2vec2_model_name).to('cuda')
+        self.smile = opensmile.Smile(
+            feature_set=opensmile.FeatureSet.eGeMAPSv02,
+            feature_level=opensmile.FeatureLevel.LowLevelDescriptors,
+            sampling_rate=8000,
+            resample=True,
+        )
+        self.non_semantic_module = hub.load('https://kaggle.com/models/google/nonsemantic-speech-benchmark/frameworks/TensorFlow2/variations/frill/versions/1')
+
+
         self.fbank_params = fbank_params
         self.max_length = max_length
 
@@ -19,56 +36,79 @@ class CustomAudioTextDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        # Load the row
+        
         row = self.data.iloc[idx]
         audio_path = row['audio_path']
-        text = row['text']
+        # text = row['text']
         classification_label = row['classification_label']
         regression_label = row['regression_label']
 
-        # 1. Compute FBanks
+        # FBanks
         waveform, sample_rate = torchaudio.load(audio_path)
+        if sample_rate != 16_000:
+            resampler = Resample(orig_freq=sample_rate, new_freq=16_000)
+            waveform = resampler(waveform)
+        
         fbank = torchaudio.compliance.kaldi.fbank(waveform, **self.fbank_params)
 
-        # 2. Compute wav2vec2 embeddings
-        input_values = self.wav2vec2_processor(waveform.squeeze().numpy(), return_tensors="pt", sampling_rate=sample_rate).input_values
+        # wav2vec2 embeddings
+        input_values = self.wav2vec2_featureExtractor(waveform.squeeze().numpy(), return_tensors="pt", sampling_rate=16000).input_values
         with torch.no_grad():
-            wav2vec2_embeddings = self.wav2vec2_model(input_values).last_hidden_state.squeeze(0)
-
-        # 3. Compute BERT embeddings (excluding CLS token)
-        inputs = self.bert_tokenizer(text, return_tensors="pt", truncation=True, padding='max_length', max_length=self.max_length)
-        with torch.no_grad():
-            bert_outputs = self.bert_model(**inputs)
-            bert_embeddings = bert_outputs.last_hidden_state.squeeze(0)[1:]  # Exclude the CLS token
+            input_values = input_values.to('cuda')
+            wav2vec2_embeddings = self.wav2vec2_model(input_values).extract_features.squeeze(dim=0).cpu().numpy()
         
-        # Return list of features and both classification and regression labels
-        features = [fbank, wav2vec2_embeddings, bert_embeddings]
+        # eGeMAPS
+        signal,sampling_rate = audiofile.read(audio_path)
+        egmaps_feats = self.smile.process_signal(
+            signal,
+            sampling_rate
+        )
+
+        # trill embeddings
+        signal, sampling_rate = librosa.load(audio_path, sr=None)
+        if sampling_rate != 16_000:
+            signal = librosa.resample(signal, orig_sr=sampling_rate, target_sr=16_000)
+        signal = np.expand_dims(signal,axis=0)
+        trill_embeddings = self.non_semantic_module(signal)['embedding'].numpy()
+
+        # phonetic features - allosaurus
+        phonetic_features = None
+
+        features = {
+            'fbank' : torch.tensor(fbank,dtype=torch.float),
+            'wav2vec2_embeddings' : torch.tensor(wav2vec2_embeddings,dtype=torch.float),
+            'egmaps_feats' : torch.tensor(egmaps_feats,dtype=torch.float),
+            'trill_embeddings' : torch.tensor(trill_embeddings,dtype=torch.float),
+            'phonetic_features' : torch.tensor(phonetic_features,dtype=torch.float)
+        }
+
         return features, (torch.tensor(classification_label, dtype=torch.long), torch.tensor(regression_label, dtype=torch.float))
 
+
 def collate_fn(batch):
-    # Unpack the batch into features and labels
     features, labels = zip(*batch)
-    
-    # Stack each type of feature separately
-    fbank_features = [item[0] for item in features]
-    wav2vec2_features = [item[1] for item in features]
-    bert_features = [item[2] for item in features]
-    
-    fbank_features = torch.nn.utils.rnn.pad_sequence(fbank_features, batch_first=True)
-    wav2vec2_features = torch.nn.utils.rnn.pad_sequence(wav2vec2_features, batch_first=True)
-    bert_features = torch.nn.utils.rnn.pad_sequence(bert_features, batch_first=True)
-    
-    # Stack the labels
+
+    fbank_features = [item['fbank'] for item in features]
+    wav2vec2_features = [item['wav2vec2_embeddings'] for item in features]
+    egmap_features = [item['egmaps_feats'] for item in features]
+    trill_features = [item['trill_embeddings'] for item in features]
+    phonetic_features = [item['phonetic_features'] for item in features]
+
+    fbank_features = pad_sequence(fbank_features, batch_first=True)
+    wav2vec2_features = pad_sequence(wav2vec2_features, batch_first=True)
+    egmap_features = pad_sequence(egmap_features, batch_first=True)
+    trill_features = pad_sequence(trill_features, batch_first=True)
+    phonetic_features = pad_sequence(phonetic_features, batch_first=True)
+
     classification_labels = torch.stack([label[0] for label in labels])
     regression_labels = torch.stack([label[1] for label in labels])
-    
-    return [fbank_features, wav2vec2_features, bert_features], (classification_labels, regression_labels)
 
+    feats = {
+        'fbank_features': fbank_features,
+        'wav2vec2_features': wav2vec2_features,
+        'egmap_features': egmap_features,
+        'trill_features': trill_features,
+        'phonetic_features': phonetic_features
+    }
 
-
-# Create the DataLoader
-#dataloader = DataLoader(dataset, batch_size=8, shuffle=True, collate_fn=collate_fn)
-
-
-
-# not sure to use bert features as cross attention as we dont have text in the test data, so we will use bert as classification head
+    return feats, (classification_labels, regression_labels)

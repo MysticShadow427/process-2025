@@ -15,7 +15,7 @@ class MultiTaskModel(nn.Module):
         self.classifier = nn.Linear(self.bert.config.hidden_size, num_labels_classification)
         
         # Regression head
-        self.regressor = nn.Linear(self.bert.config.hidden_size, 1)  # 1 for regression output
+        self.regressor = nn.Linear(self.bert.config.hidden_size, 1)
 
     def forward(self, input_ids, attention_mask, labels_classification=None, labels_regression=None):
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)

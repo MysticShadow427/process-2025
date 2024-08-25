@@ -9,72 +9,61 @@ from einops.layers.torch import Rearrange
 class GatedCrossAttentionBlock(nn.Module):
     def __init__(self, embed_dim, num_heads):
         super(GatedCrossAttentionBlock, self).__init__()
-        self.projection = nn.Linear(embed_dim, embed_dim)  # Additional projection layer
+    
         self.cross_attention = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads)
         self.tanh1 = nn.Tanh()
         self.ffn = nn.Linear(embed_dim, embed_dim)
         self.tanh2 = nn.Tanh()
 
     def forward(self, x, feature):
-        # Project the feature to match the embedding dimension
-        feature_projected = self.projection(feature)
-        
         # Cross Attention: Queries from previous conformer block, Keys and Values from the feature
-        attn_output, _ = self.cross_attention(query=x, key=feature_projected, value=feature_projected)
-        
-        # Apply Tanh activation
+        attn_output, _ = self.cross_attention(query=x, key=feature, value=feature)
         x = self.tanh1(attn_output)
-        
-        # Feed Forward Network
         x = self.ffn(x)
-        
-        # Apply Gating with Tanh
         x = self.tanh2(x)
         
         return x
 
 class CustomModel(nn.Module):
-    def __init__(self, conformer_block, num_features, embed_dim, num_heads, num_labels,bert_dir):
+    def __init__(self, embed_dim, num_heads, num_labels,bert_dir,input_dims):
         super(CustomModel, self).__init__()
-        self.num_features = num_features
-        self.conformer_blocks = nn.ModuleList([conformer_block(embed_dim) for _ in range(num_features)])
+        self.num_features = len(input_dims)
+        self.conformer_blocks = nn.ModuleList([ConformerBlock(embed_dim) for _ in range(self.num_features)])
         self.gated_cross_attention_blocks = nn.ModuleList(
-            [GatedCrossAttentionBlock(embed_dim, num_heads) for _ in range(num_features - 1)]
+            [GatedCrossAttentionBlock(embed_dim, num_heads) for _ in range(self.num_features - 1)]
         )
-        # donno we need to see this self.bert = AutoModel.from_pretrained(bert_dir)
-        self.classification_head = nn.Linear(embed_dim, num_labels)  # 2 neurons for classification
-        self.regression_head = nn.Linear(embed_dim, 1)  # 1 neuron for regression
+        self.projection_blocks = nn.ModuleList([nn.Conv1d(input_dim, 512, kernel_size=1) for input_dim in input_dims])
 
-    def forward(self, features):
+        self.bert = CustomBERT(bert_dir)
+        self.bert_projection = nn.Linear(embed_dim,768)
+
+        self.classification_head = nn.Linear(embed_dim, num_labels)  
+        self.regression_head = nn.Linear(embed_dim, 1)
+
+    def forward(self, fbank_features, wav2vec2_features, egmap_features, trill_features, phonetic_features):
         # Start with the first feature being the input to the first conformer block
-        x = features[0]  # features[0] has shape [batch_size, num_time_steps, embed_dim]
+        x = fbank_features  # [batch_size, num_time_steps, embed_dim]
+        x = self.projection_blocks[0](x) 
 
         for i in range(self.num_features - 1):
-            # Apply conformer block
             x = self.conformer_blocks[i](x)
-            
-            # Apply Gated Cross Attention block using the next feature
-            x = self.gated_cross_attention_blocks[i](x.transpose(0, 1), features[i+1].transpose(0, 1))
-            x = x.transpose(0, 1)  # Transpose back after attention
+            projected_feature = self.projection_blocks[i+1]([wav2vec2_features, egmap_features, trill_features, phonetic_features][i])
+            x = self.gated_cross_attention_blocks[i](x.transpose(0, 1), projected_feature.transpose(0, 1))
+            x = x.transpose(0, 1)
 
         # Final conformer block
         x = self.conformer_blocks[-1](x)
-
-        # donno we need to see this x = self.bert(x) 
+        # Pass through bert for textual understanding
+        x = self.bert_projection(x)
+        _, x = self.bert(x) 
 
         # Classification head
         logits = self.classification_head(x)
 
-        # Regression head with Leaky ReLU
+        # Regression head
         regression_output = F.leaky_relu(self.regression_head(x))
 
         return logits, regression_output
-
-# Example usage
-num_features = 5  # Adjust according to your input features
-embed_dim = 128  # Embedding dimension, adjust as per your requirement
-num_heads = 4  # Number of attention heads, adjust as per your requirement
-num_labels = 2  # For binary classification
 
 def exists(val):
     return val is not None
@@ -85,8 +74,6 @@ def default(val, d):
 def calc_same_padding(kernel_size):
     pad = kernel_size // 2
     return (pad, pad - (kernel_size + 1) % 2)
-
-# helper classes
 
 class Swish(nn.Module):
     def forward(self, x):
@@ -110,8 +97,6 @@ class DepthWiseConv1d(nn.Module):
     def forward(self, x):
         x = F.pad(x, self.padding)
         return self.conv(x)
-
-# attention, feedforward, and conv module
 
 class Scale(nn.Module):
     def __init__(self, scale, fn):
@@ -241,8 +226,6 @@ class ConformerConvModule(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-# Conformer Block
-
 class ConformerBlock(nn.Module):
     def __init__(
         self,
@@ -278,9 +261,23 @@ class ConformerBlock(nn.Module):
         x = self.post_norm(x)
         return x
 
-# https://github.com/codertimo/BERT-pytorch/tree/master/bert_pytorch/model
-# we can use the above link to add a bert there, we need weights main this is this
+class CustomBERT(nn.Module):
+    def __init__(self, bert_model):
+        super(CustomBERT, self).__init__()
+        self.bert = bert_model
+        
+        # for param in self.bert.parameters():
+        #     param.requires_grad = False
 
-# or else we need to train a custom transformer encoder and then use it here
+    def forward(self, custom_input):
+        # Bypass the embedding layer
+        # Custom input shape: [batch_size, num_time_steps, feature_dim]
+        
+        # Pass custom input directly into the encoder
+        bert_output = self.bert.encoder(
+            custom_input,
+            attention_mask=None  # No attention mask needed
+        )
 
-# also adding next token prediction task here is very tough
+        pooled_output = bert_output[0][:, 0]
+        return bert_output[0], pooled_output

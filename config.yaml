@@ -1,9 +1,12 @@
 model:
-  type: YourModel  # Replace with actual model type if needed
+  embed_dim: 512
+  num_head: 8
+  num_labels: 2
 
 data:
   train_csv_path: path_to_train_csv
   val_csv_path: path_to_validation_csv
+  max_len: 100
 
 fbanks:
   num_mel_bins: 80
@@ -11,10 +14,11 @@ fbanks:
   use_energy: False
 
 wav2vec2_model_name: facebook/wav2vec2-base-960h
-bert_model_name: bert-base-uncased
+bert_model_name: /content/drive/MyDrive/process2025/bert_model
 
 training:
   batch_size: 8
-  learning_rate: 1e-4
+  learning_rate: 3e-4
   epochs: 10
-  checkpoint_path: model_checkpoint.pth
+  weight_decay : 1e-3
+  checkpoint_path: /content/drive/MyDrive/process2025/model_checkpoint.pth
