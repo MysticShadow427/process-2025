@@ -16,7 +16,7 @@ assert tf.executing_eagerly()
 
 
 class CustomAudioTextDataset(Dataset):
-    def __init__(self, csv_file, wav2vec2_model_name, fbank_params, max_length=100):
+    def __init__(self, csv_file, wav2vec2_model_name, fbank_params, bert_dir,max_length=100):
         self.data = pd.read_csv(csv_file)
         self.wav2vec2_featureExtractor = Wav2Vec2FeatureExtractor.from_pretrained(wav2vec2_model_name)
         self.wav2vec2_model = Wav2Vec2Model.from_pretrained(wav2vec2_model_name).to('cuda')
@@ -25,7 +25,7 @@ class CustomAudioTextDataset(Dataset):
         for param in self.wav2vec2_model:
             param.requires_grad = False
         self.tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
-        self.bert = AutoModel.from_pretrained('/content/drive/MyDrive/process2025/bert_model').to('cuda')
+        self.bert = AutoModel.from_pretrained(bert_dir).to('cuda')
         for param in self.bert:
             param.requires_grad = False
         self.smile = opensmile.Smile(

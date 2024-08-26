@@ -35,8 +35,8 @@ def main():
     wav2vec2_model_name = cfg['wav2vec2_model_name']
     max_len = cfg['max_len']
 
-    train_dataset = CustomAudioTextDataset(train_csv_path, wav2vec2_model_name, fbank_params,max_len)
-    val_dataset = CustomAudioTextDataset(val_csv_path, wav2vec2_model_name, fbank_params,max_len)
+    train_dataset = CustomAudioTextDataset(train_csv_path, wav2vec2_model_name, fbank_params,bert_dir,max_len)
+    val_dataset = CustomAudioTextDataset(val_csv_path, wav2vec2_model_name, fbank_params,bert_dir,max_len)
     
     trainer = Trainer(
         model=model,

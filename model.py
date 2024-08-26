@@ -6,24 +6,6 @@ from transformers import AutoModel
 from einops import rearrange
 from einops.layers.torch import Rearrange
 
-class GatedCrossAttentionBlock(nn.Module):
-    def __init__(self, embed_dim, num_heads):
-        super(GatedCrossAttentionBlock, self).__init__()
-    
-        self.cross_attention = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads)
-        self.tanh1 = nn.Tanh()
-        self.ffn = nn.Linear(embed_dim, embed_dim)
-        self.tanh2 = nn.Tanh()
-
-    def forward(self, x, feature):
-        # Cross Attention: Queries from previous conformer block, Keys and Values from the feature
-        attn_output, _ = self.cross_attention(query=x, key=feature, value=feature)
-        x = self.tanh1(attn_output)
-        x = self.ffn(x)
-        x = self.tanh2(x)
-        
-        return x
-
 class CustomModel(nn.Module):
     def __init__(self, embed_dim, num_heads, num_labels,bert_dir,input_dims):
         super(CustomModel, self).__init__()
@@ -56,7 +38,7 @@ class CustomModel(nn.Module):
         # Pass through bert for textual understanding
         x = self.bert_projection(x)
         speech_embeddings = x
-        
+
         _, x = self.bert(x) 
 
         # Classification head
@@ -66,6 +48,24 @@ class CustomModel(nn.Module):
         regression_output = F.leaky_relu(self.regression_head(x))
 
         return logits, regression_output, speech_embeddings
+    
+class GatedCrossAttentionBlock(nn.Module):
+    def __init__(self, embed_dim, num_heads):
+        super(GatedCrossAttentionBlock, self).__init__()
+    
+        self.cross_attention = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads)
+        self.tanh1 = nn.Tanh()
+        self.ffn = nn.Linear(embed_dim, embed_dim)
+        self.tanh2 = nn.Tanh()
+
+    def forward(self, x, feature):
+        # Cross Attention: Queries from previous conformer block, Keys and Values from the feature
+        attn_output, _ = self.cross_attention(query=x, key=feature, value=feature)
+        x = self.tanh1(attn_output)
+        x = self.ffn(x)
+        x = self.tanh2(x)
+        
+        return x
 
 def exists(val):
     return val is not None
@@ -266,7 +266,7 @@ class ConformerBlock(nn.Module):
 class CustomBERT(nn.Module):
     def __init__(self, bert_model):
         super(CustomBERT, self).__init__()
-        self.bert = bert_model
+        self.bert = AutoModel.from_pretrained(bert_model)
         
         for param in self.bert.parameters():
             param.requires_grad = False
