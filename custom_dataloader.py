@@ -47,9 +47,9 @@ class CustomAudioTextDataset(Dataset):
         
         row = self.data.iloc[idx]
         audio_path = row['audio_path']
-        text = row['text']
-        classification_label = row['classification_label']
-        regression_label = row['regression_label']
+        text = row['transcription_text']
+        classification_label = row['class_label']
+        regression_label = row['converted_mmse']
 
         # FBanks
         waveform, sample_rate = torchaudio.load(audio_path)

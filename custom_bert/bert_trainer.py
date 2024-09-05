@@ -52,8 +52,8 @@ class MultiTaskModel(nn.Module):
         return {'loss': loss, 'logits_classification': logits_classification, 'logits_regression': logits_regression}
 
 # Load datasets
-train_df = pd.read_csv('train_dataset.csv')
-val_df = pd.read_csv('val_dataset.csv')
+train_df = pd.read_csv('/content/drive/MyDrive/process2025/train_dataset_bert.csv')
+val_df = pd.read_csv('/content/drive/MyDrive/process2025/val_dataset_bert.csv')
 
 model_name = 'bert-base-uncased'
 tokenizer = AutoTokenizer.from_pretrained(model_name)

@@ -52,7 +52,7 @@ class Trainer:
             regression_loss = self.regression_criterion(regression_output, regression_labels)
             similarity_loss = self.similarity_criterion(speech_features,bert_features,classification_labels)
 
-            loss = classification_loss + regression_loss + similarity_loss
+            loss = classification_loss + regression_loss + 0.8 * similarity_loss
             total_loss += loss.item()
             total_classification_loss += classification_loss.item()
             total_regression_loss += regression_loss.item()

@@ -21,7 +21,8 @@ def main():
     num_labels = cfg['num_labels']
     embed_dim = cfg['embed_dim']
     num_heads = cfg['num_head']
-    model = CustomModel(embed_dim,num_heads,num_labels,bert_dir)
+    update_bert = cfg['update_bert']
+    model = CustomModel(embed_dim,num_heads,num_labels,bert_dir,update_bert)
     
     train_csv_path = cfg['data']['train_csv_path']
     val_csv_path = cfg['data']['val_csv_path'] 

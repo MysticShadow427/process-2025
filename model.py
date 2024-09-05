@@ -7,7 +7,7 @@ from einops import rearrange
 from einops.layers.torch import Rearrange
 
 class CustomModel(nn.Module):
-    def __init__(self, embed_dim, num_heads, num_labels,bert_dir,input_dims):
+    def __init__(self, embed_dim, num_heads, num_labels,bert_dir,input_dims,update_bert):
         super(CustomModel, self).__init__()
         self.num_features = len(input_dims)
         self.conformer_blocks = nn.ModuleList([ConformerBlock(embed_dim) for _ in range(self.num_features)])
@@ -17,10 +17,19 @@ class CustomModel(nn.Module):
         self.projection_blocks = nn.ModuleList([nn.Conv1d(input_dim, 512, kernel_size=1) for input_dim in input_dims])
 
         self.bert = CustomBERT(bert_dir)
+        if not update_bert:
+            for param in self.bert.parameters():
+                param.requires_grad = False
+
         self.bert_projection = nn.Linear(embed_dim,768)
 
         self.classification_head = nn.Linear(embed_dim, num_labels)  
         self.regression_head = nn.Linear(embed_dim, 1)
+
+        # if asr:
+        #     self.decoder_layer = nn.TransformerDecoderLayer(embed_dim,num_heads,batch_first=True)
+        #     self.decoder = nn.TransformerDecoder(self.decoder_layer,num_layers=1)
+        #     self.lm_head = nn.Linear(embed_dim,num_vocab)
 
     def forward(self, fbank_features, wav2vec2_features, egmap_features, trill_features, phonetic_features):
         # Start with the first feature being the input to the first conformer block
@@ -38,6 +47,12 @@ class CustomModel(nn.Module):
         # Pass through bert for textual understanding
         x = self.bert_projection(x)
         speech_embeddings = x
+
+        # if asr:
+        #     tgt = self.pos_embedding(tgt)
+        #     tgt = self.token_embedding(tgt)
+        #     txt_feats = self.decoder(speech_embeddings,tgt)
+        #     token_logits = self.lm_head(txt_feats)
 
         _, x = self.bert(x) 
 
@@ -66,7 +81,8 @@ class GatedCrossAttentionBlock(nn.Module):
         x = self.tanh2(x)
         
         return x
-
+    
+# lucidrains/conformer
 def exists(val):
     return val is not None
 

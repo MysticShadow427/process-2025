@@ -16,5 +16,6 @@
 - think more multitask learning objectives : mainly focusing on semantic fluency and phonetic fluency.
 - come up with a loss function that makes text embeddings and speech embeddings similar. - *done*
 - does adding layernorm after all conformer blocks and gated cross attention blocks makes life good?
+- need to add a script to preprocess text data and audio data, we need to check distributions of of each of the lenghts. -*done*
 
 `512` should be the dimension and before sending to bert we need to project it to 768.

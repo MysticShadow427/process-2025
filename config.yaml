@@ -1,24 +1,25 @@
 model:
   embed_dim: 512
   num_head: 8
-  num_labels: 2
+  num_labels: 3
+  update_bert: False
 
 data:
-  train_csv_path: path_to_train_csv
-  val_csv_path: path_to_validation_csv
-  max_len: 100
+  train_csv_path: '/content/drive/MyDrive/process2025/train_dataset_process.csv'
+  val_csv_path: '/content/drive/MyDrive/process2025/val_dataset_process.csv'
+  max_len: 100 # first check distributions
 
 fbanks:
   num_mel_bins: 80
   sample_frequency: 16000
   use_energy: False
 
-wav2vec2_model_name: facebook/wav2vec2-base-960h
-bert_model_name: /content/drive/MyDrive/process2025/bert_model
+wav2vec2_model_name: 'facebook/wav2vec2-base-960h'
+bert_model_name: '/content/drive/MyDrive/process2025/bert_model'
 
 training:
-  batch_size: 8
+  batch_size: 32
   learning_rate: 3e-4
   epochs: 10
   weight_decay : 1e-3
-  checkpoint_path: /content/drive/MyDrive/process2025/model_checkpoint.pth
+  checkpoint_path: '/content/drive/MyDrive/process2025/model_checkpoint_process.pth'
