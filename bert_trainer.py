@@ -4,12 +4,13 @@ from transformers import AutoTokenizer, AutoModel, Trainer, TrainingArguments
 import torch
 from torch import nn
 from datasets import load_metric
+from utils import extract_and_save_columns
 
 class MultiTaskModel(nn.Module):
     def __init__(self, model_name, num_labels_classification):
         super(MultiTaskModel, self).__init__()
         self.bert = AutoModel.from_pretrained(model_name)
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(0.2)
         
         # Classification head
         self.classifier = nn.Linear(self.bert.config.hidden_size, num_labels_classification)
@@ -51,30 +52,33 @@ class MultiTaskModel(nn.Module):
 
         return {'loss': loss, 'logits_classification': logits_classification, 'logits_regression': logits_regression}
 
-# Load datasets
-train_df = pd.read_csv('/content/drive/MyDrive/process2025/train_dataset_bert.csv')
-val_df = pd.read_csv('/content/drive/MyDrive/process2025/val_dataset_bert.csv')
+train_df = pd.read_csv('/content/drive/MyDrive/process2025/train_dataset_process.csv')
+train_df = extract_and_save_columns(train_df)
+val_df = pd.read_csv('/content/drive/MyDrive/process2025/val_dataset_process.csv')
+val_df = extract_and_save_columns(val_df)
 
+train_df = train_df.rename(columns={'transcription_text':'text'})
+val_df = val_df.rename(columns={'transcription_text':'text'})
+print(train_df.columns)
 model_name = 'bert-base-uncased'
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 def preprocess_function(examples):
-    return tokenizer(examples['text'], padding='max_length', truncation=True, max_length=128)
+    return tokenizer(examples['text'], padding='max_length', truncation=True, max_length=250)
 
 train_dataset = Dataset.from_pandas(train_df)
 val_dataset = Dataset.from_pandas(val_df)
-
+print('Preprocessing dataset...')
 train_dataset = train_dataset.map(preprocess_function, batched=True)
 val_dataset = val_dataset.map(preprocess_function, batched=True)
 
-# Rename columns
-train_dataset = train_dataset.rename_column('classification_label', 'labels_classification')
-train_dataset = train_dataset.rename_column('regression_label', 'labels_regression')
-val_dataset = val_dataset.rename_column('classification_label', 'labels_classification')
-val_dataset = val_dataset.rename_column('regression_label', 'labels_regression')
+train_dataset = train_dataset.rename_column('class_label', 'labels_classification')
+train_dataset = train_dataset.rename_column('converted_mmse', 'labels_regression')
+val_dataset = val_dataset.rename_column('class_label', 'labels_classification')
+val_dataset = val_dataset.rename_column('converted_mmse', 'labels_regression')
 
-num_labels_classification = len(train_df['classification_label'].unique())  
-
+num_labels_classification = len(train_df['class_label'].unique())  
+print('Loading model...')
 model = MultiTaskModel(model_name, num_labels_classification)
 
 def compute_metrics(pred):
@@ -98,14 +102,15 @@ def compute_metrics(pred):
 training_args = TrainingArguments(
     output_dir="./results",
     evaluation_strategy="epoch",
-    per_device_train_batch_size=8,
-    per_device_eval_batch_size=8,
-    num_train_epochs=3,
+    per_device_train_batch_size=16,
+    per_device_eval_batch_size=16,
+    num_train_epochs=10,
     save_strategy="epoch",
     logging_dir='./logs',
     logging_steps=10,
     load_best_model_at_end=True,
-    save_total_limit=1
+    save_total_limit=1,
+    metric_for_best_model='eval_runtime',
 )
 
 trainer = Trainer(
@@ -115,7 +120,7 @@ trainer = Trainer(
     eval_dataset=val_dataset,
     compute_metrics=compute_metrics
 )
-
+print('Starting training...')
 trainer.train()
-
+print('Saving model...')
 model.bert.save_pretrained("/content/drive/MyDrive/process2025/bert_model")

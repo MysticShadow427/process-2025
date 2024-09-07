@@ -7,18 +7,20 @@ import librosa
 import opensmile
 from torchaudio.transforms import Resample
 from transformers import Wav2Vec2FeatureExtractor, Wav2Vec2Model, AutoTokenizer, AutoModel
+from text2phonemesequence import Text2PhonemeSequence
 import pandas as pd
 import tensorflow_hub as hub
 import numpy as np
 import tensorflow.compat.v2 as tf
 tf.enable_v2_behavior()
 assert tf.executing_eagerly()
-
+from utils import clean_transcription_text
 
 class CustomAudioTextDataset(Dataset):
-    def __init__(self, csv_file, wav2vec2_model_name, fbank_params, bert_dir,max_length=100):
+    def __init__(self, csv_file, wav2vec2_model_name, fbank_params, bert_dir,phoneme_model,max_length=100):
         self.data = pd.read_csv(csv_file)
-        self.wav2vec2_featureExtractor = Wav2Vec2FeatureExtractor.from_pretrained(wav2vec2_model_name)
+        self.data['transcribed_text'] = self.data['transcription_text'].apply(clean_transcription_text)
+        self.wav2vec2_featureExtractor = Wav2Vec2FeatureExtractor.from_pretrained(wav2vec2_model_name).to('cuda')
         self.wav2vec2_model = Wav2Vec2Model.from_pretrained(wav2vec2_model_name).to('cuda')
         for param in self.wav2vec2_featureExtractor:
             param.requires_grad = False
@@ -36,9 +38,23 @@ class CustomAudioTextDataset(Dataset):
         )
         self.non_semantic_module = hub.load('https://kaggle.com/models/google/nonsemantic-speech-benchmark/frameworks/TensorFlow2/variations/frill/versions/1')
 
+        self.phoneme_model = None
+        if phoneme_model == 'vinai/xphonebert-base':
+            self.phoneme_model = AutoModel.from_pretrained("vinai/xphonebert-base").to('cuda')
+            self.phoneme_tokenizer = AutoTokenizer.from_pretrained("vinai/xphonebert-base")
+            self.t2p = Text2PhonemeSequence(language='eng-us', is_cuda=True)
+        else:
+            self.phoneme_model = Wav2Vec2Model.from_pretrained('vitouphy/wav2vec2-xls-r-300m-phoneme').to('cuda')
+            self.phoneme_featureExtractor = Wav2Vec2FeatureExtractor.from_pretrained('vitouphy/wav2vec2-xls-r-300m-phoneme').to('cuda')
+        for param in self.phoneme_model:
+            param.requires_grad = False
+        for param in self.phoneme_featureExtractor:
+            param.requires_grad = False
+
 
         self.fbank_params = fbank_params
         self.max_length = max_length
+        self.phoneme_model = phoneme_model
 
     def __len__(self):
         return len(self.data)
@@ -60,7 +76,7 @@ class CustomAudioTextDataset(Dataset):
         fbank = torchaudio.compliance.kaldi.fbank(waveform, **self.fbank_params)
 
         # wav2vec2 embeddings
-        input_values = self.wav2vec2_featureExtractor(waveform.squeeze().numpy(), return_tensors="pt", sampling_rate=16000).input_values
+        input_values = self.wav2vec2_featureExtractor(waveform.to('cuda').squeeze().numpy(), return_tensors="pt", sampling_rate=16000).input_values
         with torch.no_grad():
             input_values = input_values.to('cuda')
             wav2vec2_embeddings = self.wav2vec2_model(input_values).extract_features.squeeze(dim=0).cpu().numpy()
@@ -79,8 +95,19 @@ class CustomAudioTextDataset(Dataset):
         signal = np.expand_dims(signal,axis=0)
         trill_embeddings = self.non_semantic_module(signal)['embedding'].numpy()
 
-        # phonetic features - allosaurus
+        # phonetic features - allosaurus :( not getting it so using diff
         phonetic_features = None
+        if self.phoneme_model == 'vinai/xphonebert-base':
+            input_phonemes = self.t2p.infer_sentence(text)
+            input_ids = self.phoneme_tokenizer(input_phonemes, return_tensors="pt")
+
+            with torch.no_grad():
+                phonetic_features = self.phoneme_model(**input_ids)
+        else:
+            input_values_p = self.wav2vec2_featureExtractor(waveform.to('cuda').squeeze().numpy(), return_tensors="pt", sampling_rate=16000).input_values
+        with torch.no_grad():
+            input_values_p = input_values_p.to('cuda')
+            phonetic_features = self.phoneme_model(input_values_p).extract_features.squeeze(dim=0).cpu().numpy()
 
         # bert text embeddings
         encoding = self.tokenizer.encode_plus(

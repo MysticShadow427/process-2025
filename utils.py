@@ -1,14 +1,17 @@
 import os
 import pandas as pd
+import numpy as np
+from sklearn.neighbors import NearestNeighbors
 import random
 import matplotlib.pyplot as plt
 import pandas as pd
 from transformers import BertTokenizer
 import librosa
+import re
 
 
 def generate_csv_dataset():
-    demo_info_path = "/content/drive/MyDrive/PROCESS-V1/demo-info.csv"
+    demo_info_path = "/content/drive/MyDrive/process2025/dem-info.csv"
     base_folder_path = "/content/drive/MyDrive/PROCESS-V1"
     train_output_csv = "/content/drive/MyDrive/process2025/train_dataset_process.csv"
     val_output_csv = "/content/drive/MyDrive/process2025/val_dataset_process.csv"
@@ -38,7 +41,7 @@ def generate_csv_dataset():
             else:
                 transcription_text = ""  
 
-            if train_or_dev == 'Train':
+            if train_or_dev == 'train':
                 train_data.append([audio_file, transcription_text, classification_label, mmse_score])
             else:
                 dev_data.append([audio_file, transcription_text, classification_label, mmse_score])
@@ -55,6 +58,21 @@ def generate_csv_dataset():
     print(f"Train CSV saved to: {train_output_csv}")
     print(f"Dev CSV saved to: {val_output_csv}")
 
+def clean_transcription_text(text):
+    # Remove '{any_name}:' prefix
+    text = re.sub(r'^[^:]+:\s*', '', text)
+    
+    # Remove patterns like (x seconds), (1 second), {x sounds}
+    text = re.sub(r'\(\d+\s*(second|seconds)\)', '', text)
+    text = re.sub(r'{\d+\s*(sound|sounds)}', '', text)
+    
+    # Remove any text inside parentheses ()
+    text = re.sub(r'\([^)]*\)', '', text)
+    
+    # Remove extra spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
 
 def plot_audio_length_distribution(csv_file_path):
     df = pd.read_csv(csv_file_path)
@@ -100,12 +118,28 @@ def plot_bert_tokenized_text_length_distribution(csv_file_path):
     plt.grid(True)
     plt.show()
 
+def extract_and_save_columns(df):
+    selected_columns = df[['transcription_text', 'class_label', 'converted_mmse']]
+    return selected_columns
 
-def preprocess_text(csv_file):
-    """
-    There is something irrelevant in the text so you need to remove that and save the new csv file at the same location.
-    """
+
+# Function to fill missing values in 'converted_mmse'
+def fill_missing_mmse(df):
+    for i, row in df[df['Converted-MMSE'].isnull()].iterrows():
+        # Filter data for the same 'TrainorDev' and 'class'
+        filtered_df = df[(df['TrainOrDev'] == row['TrainOrDev']) & (df['Class'] == row['Class'])]
+        
+        # Calculate the mean of 'converted_mmse' for the filtered data
+        mean_mmse = filtered_df['Converted-MMSE'].mean()
+        
+        # Fill the missing value with the mean
+        df.at[i, 'Converted-MMSE'] = mean_mmse
+    
+    return df
+
 
 def generate_submission():
     pass
 
+if __name__ == '__main__':
+    pass

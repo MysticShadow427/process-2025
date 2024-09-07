@@ -7,7 +7,7 @@ model:
 data:
   train_csv_path: '/content/drive/MyDrive/process2025/train_dataset_process.csv'
   val_csv_path: '/content/drive/MyDrive/process2025/val_dataset_process.csv'
-  max_len: 100 # first check distributions
+  max_len: 250 # first check distributions
 
 fbanks:
   num_mel_bins: 80
@@ -16,6 +16,7 @@ fbanks:
 
 wav2vec2_model_name: 'facebook/wav2vec2-base-960h'
 bert_model_name: '/content/drive/MyDrive/process2025/bert_model'
+phoneme_model: 'vinai/xphonebert-base'
 
 training:
   batch_size: 32

@@ -22,7 +22,8 @@ def main():
     embed_dim = cfg['embed_dim']
     num_heads = cfg['num_head']
     update_bert = cfg['update_bert']
-    model = CustomModel(embed_dim,num_heads,num_labels,bert_dir,update_bert)
+    phoneme_model = cfg['phoneme_model']
+    model = CustomModel(embed_dim,num_heads,num_labels,bert_dir,input_dims,update_bert)
     
     train_csv_path = cfg['data']['train_csv_path']
     val_csv_path = cfg['data']['val_csv_path'] 
@@ -36,8 +37,8 @@ def main():
     wav2vec2_model_name = cfg['wav2vec2_model_name']
     max_len = cfg['max_len']
 
-    train_dataset = CustomAudioTextDataset(train_csv_path, wav2vec2_model_name, fbank_params,bert_dir,max_len)
-    val_dataset = CustomAudioTextDataset(val_csv_path, wav2vec2_model_name, fbank_params,bert_dir,max_len)
+    train_dataset = CustomAudioTextDataset(train_csv_path, wav2vec2_model_name, fbank_params,bert_dir,phoneme_model,max_len)
+    val_dataset = CustomAudioTextDataset(val_csv_path, wav2vec2_model_name, fbank_params,bert_dir,phoneme_model,max_len)
     
     trainer = Trainer(
         model=model,
