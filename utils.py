@@ -137,9 +137,105 @@ def fill_missing_mmse(df):
     
     return df
 
-
 def generate_submission():
     pass
+
+# FEATURE EXTRACTION CODE 
+
+# import audiofile
+# import librosa
+# import opensmile
+# from transformers import Wav2Vec2FeatureExtractor, Wav2Vec2Model, AutoTokenizer, AutoModel
+# from text2phonemesequence import Text2PhonemeSequence
+# import tensorflow_hub as hub
+# import tensorflow.compat.v2 as tf
+# tf.enable_v2_behavior()
+# assert tf.executing_eagerly()
+
+# self.wav2vec2_featureExtractor = Wav2Vec2FeatureExtractor.from_pretrained(wav2vec2_model_name).to('cuda')
+        # self.wav2vec2_model = Wav2Vec2Model.from_pretrained(wav2vec2_model_name).to('cuda')
+        # for param in self.wav2vec2_featureExtractor:
+        #     param.requires_grad = False
+        # for param in self.wav2vec2_model:
+        #     param.requires_grad = False
+        # self.tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+        # self.bert = AutoModel.from_pretrained(bert_dir).to('cuda')
+        # for param in self.bert:
+        #     param.requires_grad = False
+        # self.smile = opensmile.Smile(
+        #     feature_set=opensmile.FeatureSet.eGeMAPSv02,
+        #     feature_level=opensmile.FeatureLevel.LowLevelDescriptors,
+        #     sampling_rate=16000,
+        #     resample=True,
+        # )
+        # self.non_semantic_module = hub.load('https://kaggle.com/models/google/nonsemantic-speech-benchmark/frameworks/TensorFlow2/variations/frill/versions/1')
+
+        # self.phoneme_model = None
+        # if phoneme_model == 'vinai/xphonebert-base':
+        #     self.phoneme_model = AutoModel.from_pretrained("vinai/xphonebert-base").to('cuda')
+        #     self.phoneme_tokenizer = AutoTokenizer.from_pretrained("vinai/xphonebert-base")
+        #     self.t2p = Text2PhonemeSequence(language='eng-us', is_cuda=True)
+        # else:
+        #     self.phoneme_model = Wav2Vec2Model.from_pretrained('vitouphy/wav2vec2-xls-r-300m-phoneme').to('cuda')
+        #     self.phoneme_featureExtractor = Wav2Vec2FeatureExtractor.from_pretrained('vitouphy/wav2vec2-xls-r-300m-phoneme').to('cuda')
+        # for param in self.phoneme_model:
+        #     param.requires_grad = False
+        # for param in self.phoneme_featureExtractor:
+        #     param.requires_grad = False
+
+        # wav2vec2 embeddings
+        # input_values = self.wav2vec2_featureExtractor(waveform.to('cuda').squeeze().numpy(), return_tensors="pt", sampling_rate=16000).input_values
+        # with torch.no_grad():
+        #     input_values = input_values.to('cuda')
+        #     wav2vec2_embeddings = self.wav2vec2_model(input_values).extract_features.squeeze(dim=0).cpu().numpy()
+        
+        # eGeMAPS
+        # signal,sampling_rate = audiofile.read(audio_path)
+        # egmaps_feats = self.smile.process_signal(
+        #     signal,
+        #     sampling_rate
+        # )
+
+        # trill embeddings
+        # signal, sampling_rate = librosa.load(audio_path, sr=None)
+        # if sampling_rate != 16_000:
+        #     signal = librosa.resample(signal, orig_sr=sampling_rate, target_sr=16_000)
+        # signal = np.expand_dims(signal,axis=0)
+        # trill_embeddings = self.non_semantic_module(signal)['embedding'].numpy()
+
+        # phonetic features - allosaurus :( not getting it so using diff
+        # phonetic_features = None
+        # if self.phoneme_model == 'vinai/xphonebert-base':
+        #     input_phonemes = self.t2p.infer_sentence(text)
+        #     input_ids = self.phoneme_tokenizer(input_phonemes, return_tensors="pt")
+
+        #     with torch.no_grad():
+        #         phonetic_features = self.phoneme_model(**input_ids)
+        # else:
+        #     input_values_p = self.wav2vec2_featureExtractor(waveform.to('cuda').squeeze().numpy(), return_tensors="pt", sampling_rate=16000).input_values
+        # with torch.no_grad():
+        #     input_values_p = input_values_p.to('cuda')
+        #     phonetic_features = self.phoneme_model(input_values_p).extract_features.squeeze(dim=0).cpu().numpy()
+
+        # bert text embeddings
+        # encoding = self.tokenizer.encode_plus(
+        #     text,
+        #     add_special_tokens=True,
+        #     max_length=self.max_len,
+        #     return_token_type_ids=False,
+        #     padding='max_length',
+        #     return_attention_mask=True,
+        #     return_tensors='pt',
+        #     truncation=True
+        # )
+
+        # input_ids = encoding['input_ids']
+        # attention_mask = encoding['attention_mask']
+
+        # with torch.no_grad():
+        #     bert_embeddings,_ = self.bert(input_ids,attention_mask)
+
+
 
 if __name__ == '__main__':
     pass

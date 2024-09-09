@@ -2,59 +2,38 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 import torchaudio
-import audiofile
-import librosa
-import opensmile
-from torchaudio.transforms import Resample
-from transformers import Wav2Vec2FeatureExtractor, Wav2Vec2Model, AutoTokenizer, AutoModel
-from text2phonemesequence import Text2PhonemeSequence
-import pandas as pd
-import tensorflow_hub as hub
 import numpy as np
-import tensorflow.compat.v2 as tf
-tf.enable_v2_behavior()
-assert tf.executing_eagerly()
+import pandas as pd
+from torchaudio.transforms import Resample
 from utils import clean_transcription_text
+import pickle
+import torchaudio.transforms as T
+from audiomentations import Trim
 
 class CustomAudioTextDataset(Dataset):
-    def __init__(self, csv_file, wav2vec2_model_name, fbank_params, bert_dir,phoneme_model,max_length=100):
+    def __init__(self, csv_file, wav2vec2_model_name, fbank_params, bert_dir,egmaps_dir,trill_embeds,phoneme_model,max_length=100):
         self.data = pd.read_csv(csv_file)
+        with open(wav2vec2_model_name, 'rb') as f:
+             self.w2v2 = pickle.load(f) # list of numpy arrays
+        with open(phoneme_model, 'rb') as f:
+             self.phonemes = pickle.load(f)
+        with open(bert_dir,'rb') as f:
+            self.bert_feats = pickle.load(f)
+        with open(egmaps_dir,'rb') as f:
+            self.egmaps_feats = pickle.load(f)
+        with open(trill_embeds,'rb') as f:
+            self.trill_embeds = pickle.load(f)
+        
         self.data['transcribed_text'] = self.data['transcription_text'].apply(clean_transcription_text)
-        self.wav2vec2_featureExtractor = Wav2Vec2FeatureExtractor.from_pretrained(wav2vec2_model_name).to('cuda')
-        self.wav2vec2_model = Wav2Vec2Model.from_pretrained(wav2vec2_model_name).to('cuda')
-        for param in self.wav2vec2_featureExtractor:
-            param.requires_grad = False
-        for param in self.wav2vec2_model:
-            param.requires_grad = False
-        self.tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
-        self.bert = AutoModel.from_pretrained(bert_dir).to('cuda')
-        for param in self.bert:
-            param.requires_grad = False
-        self.smile = opensmile.Smile(
-            feature_set=opensmile.FeatureSet.eGeMAPSv02,
-            feature_level=opensmile.FeatureLevel.LowLevelDescriptors,
-            sampling_rate=8000,
-            resample=True,
-        )
-        self.non_semantic_module = hub.load('https://kaggle.com/models/google/nonsemantic-speech-benchmark/frameworks/TensorFlow2/variations/frill/versions/1')
-
-        self.phoneme_model = None
-        if phoneme_model == 'vinai/xphonebert-base':
-            self.phoneme_model = AutoModel.from_pretrained("vinai/xphonebert-base").to('cuda')
-            self.phoneme_tokenizer = AutoTokenizer.from_pretrained("vinai/xphonebert-base")
-            self.t2p = Text2PhonemeSequence(language='eng-us', is_cuda=True)
-        else:
-            self.phoneme_model = Wav2Vec2Model.from_pretrained('vitouphy/wav2vec2-xls-r-300m-phoneme').to('cuda')
-            self.phoneme_featureExtractor = Wav2Vec2FeatureExtractor.from_pretrained('vitouphy/wav2vec2-xls-r-300m-phoneme').to('cuda')
-        for param in self.phoneme_model:
-            param.requires_grad = False
-        for param in self.phoneme_featureExtractor:
-            param.requires_grad = False
-
+        
 
         self.fbank_params = fbank_params
         self.max_length = max_length
         self.phoneme_model = phoneme_model
+        self.speed_pertubation = T.SpeedPerturbation(16000, [0.9, 1.1, 1.0, 1.0, 1.0])
+        self.freq_masking = T.FrequencyMasking(freq_mask_param=30) 
+        self.time_masking = T.TimeMasking(time_mask_param=40)
+        self.trim = Trim(top_db=25.0,p=1.0)
 
     def __len__(self):
         return len(self.data)
@@ -66,6 +45,16 @@ class CustomAudioTextDataset(Dataset):
         text = row['transcription_text']
         classification_label = row['class_label']
         regression_label = row['converted_mmse']
+        # wav2vec2 embeddings
+        wav2vec2_embeddings = self.w2v2[idx]
+        # phonetic features
+        phonetic_features = self.phonemes[idx]
+        # bert embeddings
+        bert_embeddings = self.bert_feats[idx]
+        # egmaps features
+        egmaps_feats = self.egmaps_feats[idx].values
+        # trill embeddings
+        trill_embeddings = self.trill_embeds[idx]
 
         # FBanks
         waveform, sample_rate = torchaudio.load(audio_path)
@@ -73,69 +62,23 @@ class CustomAudioTextDataset(Dataset):
             resampler = Resample(orig_freq=sample_rate, new_freq=16_000)
             waveform = resampler(waveform)
         
-        fbank = torchaudio.compliance.kaldi.fbank(waveform, **self.fbank_params)
-
-        # wav2vec2 embeddings
-        input_values = self.wav2vec2_featureExtractor(waveform.to('cuda').squeeze().numpy(), return_tensors="pt", sampling_rate=16000).input_values
-        with torch.no_grad():
-            input_values = input_values.to('cuda')
-            wav2vec2_embeddings = self.wav2vec2_model(input_values).extract_features.squeeze(dim=0).cpu().numpy()
-        
-        # eGeMAPS
-        signal,sampling_rate = audiofile.read(audio_path)
-        egmaps_feats = self.smile.process_signal(
-            signal,
-            sampling_rate
-        )
-
-        # trill embeddings
-        signal, sampling_rate = librosa.load(audio_path, sr=None)
-        if sampling_rate != 16_000:
-            signal = librosa.resample(signal, orig_sr=sampling_rate, target_sr=16_000)
-        signal = np.expand_dims(signal,axis=0)
-        trill_embeddings = self.non_semantic_module(signal)['embedding'].numpy()
-
-        # phonetic features - allosaurus :( not getting it so using diff
-        phonetic_features = None
-        if self.phoneme_model == 'vinai/xphonebert-base':
-            input_phonemes = self.t2p.infer_sentence(text)
-            input_ids = self.phoneme_tokenizer(input_phonemes, return_tensors="pt")
-
-            with torch.no_grad():
-                phonetic_features = self.phoneme_model(**input_ids)
-        else:
-            input_values_p = self.wav2vec2_featureExtractor(waveform.to('cuda').squeeze().numpy(), return_tensors="pt", sampling_rate=16000).input_values
-        with torch.no_grad():
-            input_values_p = input_values_p.to('cuda')
-            phonetic_features = self.phoneme_model(input_values_p).extract_features.squeeze(dim=0).cpu().numpy()
-
-        # bert text embeddings
-        encoding = self.tokenizer.encode_plus(
-            text,
-            add_special_tokens=True,
-            max_length=self.max_len,
-            return_token_type_ids=False,
-            padding='max_length',
-            return_attention_mask=True,
-            return_tensors='pt',
-            truncation=True
-        )
-
-        input_ids = encoding['input_ids']
-        attention_mask = encoding['attention_mask']
-
-        with torch.no_grad():
-            bert_embeddings,_ = self.bert(input_ids,attention_mask)
-
-
-
+        #trim
+        waveform = self.trim(waveform,16000)
+        # speed pertubation
+        waveform,_ = self.speed_pertubation(waveform)
+        # fbank featurs
+        fbank = torchaudio.compliance.kaldi.fbank(waveform=waveform, num_mel_bins=self.fbank_params['num_mel_bins'],frame_length=self.fbank_params['frame_length'],frame_shift=self.fbank_params['frame_shift'])
+        # spec augment
+        fbank = self.freq_masking(fbank)
+        fbank = self.time_masking(fbank
+                                  )
         features = {
             'fbank' : torch.tensor(fbank,dtype=torch.float),
             'wav2vec2_embeddings' : torch.tensor(wav2vec2_embeddings,dtype=torch.float),
             'egmaps_feats' : torch.tensor(egmaps_feats,dtype=torch.float),
             'trill_embeddings' : torch.tensor(trill_embeddings,dtype=torch.float),
             'phonetic_features' : torch.tensor(phonetic_features,dtype=torch.float),
-            'bert_embeddings' : bert_embeddings
+            'bert_embeddings' : torch.tensor(bert_embeddings,dtype=torch.float)
         }
 
         return features, (torch.tensor(classification_label, dtype=torch.long), torch.tensor(regression_label, dtype=torch.float))

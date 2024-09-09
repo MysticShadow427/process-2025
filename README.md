@@ -18,6 +18,9 @@
 - does adding layernorm after all conformer blocks and gated cross attention blocks makes life good?
 - need to add a script to preprocess text data and audio data, we need to check distributions of of each of the lenghts. -*done*
 - currently for phoneme features i am using this `vitouphy/wav2vec2-xls-r-300m-phoneme` but what we can do is to use `facebook/wav2vec2-xlsr-53-espeak-cv-ft` to generate phonetic transcriptions and then use `vinai/xphonebert-base` to produce some speech features.
+- what augmentations can we apply together, what effect do they have if aplied together.
+- also we need to check whether 1d cnn feture projections are better or onoe layer nueral nets are better.
+
 
 `512` should be the dimension and before sending to bert we need to project it to 768.
 

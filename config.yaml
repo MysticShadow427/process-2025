@@ -7,16 +7,27 @@ model:
 data:
   train_csv_path: '/content/drive/MyDrive/process2025/train_dataset_process.csv'
   val_csv_path: '/content/drive/MyDrive/process2025/val_dataset_process.csv'
-  max_len: 250 # first check distributions
+  max_len: 250 
 
 fbanks:
-  num_mel_bins: 80
+  num_mel_bins: 512
   sample_frequency: 16000
   use_energy: False
+  frame_shift: 10
+  frame_lenght: 25
 
-wav2vec2_model_name: 'facebook/wav2vec2-base-960h'
+wav2vec2_model_name_train: '/content/drive/MyDrive/proces2025/process_w2v2_train_embeddings.pkl'
+wav2vec2_model_name_val: '/content/drive/MyDrive/process_w2v2_val_embeddings.pkl'
 bert_model_name: '/content/drive/MyDrive/process2025/bert_model'
-phoneme_model: 'vinai/xphonebert-base'
+phoneme_model_train: '/content/drive/MyDrive/process2025/process_phoneme_train_embeddings.pkl'
+phoneme_model_val: '/content/drive/MyDrive/process2025/process_phoneme_val_embeddings.pkl'
+egmpas_feats_train : '/content/drive/MyDrive/process2025/process_egmaps_train_features.pkl'
+egmpas_feats_val : '/content/drive/MyDrive/process2025/process_egmaps_val_features.pkl'
+trill_feats_train : '/content/drive/MyDrive/process2025/process_trill_train_embeddings.pkl'
+trill_feats_val : '/content/drive/MyDrive/process2025/process_trill_val_embeddings.pkl'
+
+
+
 
 training:
   batch_size: 32
