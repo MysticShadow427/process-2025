@@ -18,16 +18,18 @@ def main():
     print("\033[34mDevice: 'cuda'\033[0m")
     input_dims = [512,25,2048,512] #egmaps = 25, trill = 2048,w2v2=512,w2v2phonetic = 512
     bert_dir = cfg['bert_model_name']
-    num_labels = cfg['num_labels']
-    embed_dim = cfg['embed_dim']
-    num_heads = cfg['num_head']
-    update_bert = cfg['update_bert']
+    num_labels = cfg['model']['num_labels']
+    embed_dim = cfg['model']['embed_dim']
+    num_heads = cfg['model']['num_head']
+    update_bert = cfg['model']['update_bert']
     phoneme_model_train = cfg['phoneme_model_train']
     phoneme_model_val = cfg['phoneme_model_val']
     egmaps_train = cfg['egmpas_feats_train']
     egmaps_val = cfg['egmpas_feats_val']
     trill_train = cfg['trill_feats_train']
     trill_val = cfg['trill_feats_val']
+    bert_dir_train = cfg['bert_dir_train']
+    bert_dir_val = cfg['bert_dir_val']
 
     model = CustomModel(embed_dim,num_heads,num_labels,bert_dir,input_dims,update_bert)
     print("\033[34mModel Loaded...\033[0m")
@@ -44,10 +46,10 @@ def main():
 
     wav2vec2_model_name_train = cfg['wav2vec2_model_name_train']
     wav2vec2_model_name_val = cfg['wav2vec2_model_name_val']
-    max_len = cfg['max_len']
+    max_len = cfg['data']['max_len']
 
-    train_dataset = CustomAudioTextDataset(train_csv_path, wav2vec2_model_name_train, fbank_params,bert_dir,egmaps_train,trill_train,phoneme_model_train,max_len)
-    val_dataset = CustomAudioTextDataset(val_csv_path, wav2vec2_model_name_val, fbank_params,bert_dir,egmaps_val,trill_val,phoneme_model_val,max_len)
+    train_dataset = CustomAudioTextDataset(train_csv_path, wav2vec2_model_name_train, fbank_params,bert_dir_train,egmaps_train,trill_train,phoneme_model_train,max_len)
+    val_dataset = CustomAudioTextDataset(val_csv_path, wav2vec2_model_name_val, fbank_params,bert_dir_val,egmaps_val,trill_val,phoneme_model_val,max_len)
     print("\033[34mDataset created...!\033[0m")
     print("\033[34mTrainer ready...\033[0m")
     trainer = Trainer(
@@ -56,7 +58,7 @@ def main():
         val_dataset=val_dataset,
         batch_size=cfg['training']['batch_size'],
         learning_rate=cfg['training']['learning_rate'],
-        wt_decay= cfg['weight_decay'],
+        wt_decay= cfg['training']['weight_decay'],
         device=device
     )
     
@@ -65,6 +67,6 @@ def main():
 
     checkpoint_path = cfg['training']['checkpoint_path']
     trainer.save_checkpoint(checkpoint_path)
-
+    print("\033[34mModel checkpoint created...\033[0m")
 if __name__ == "__main__":
     main()

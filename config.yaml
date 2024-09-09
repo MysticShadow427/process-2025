@@ -14,20 +14,19 @@ fbanks:
   sample_frequency: 16000
   use_energy: False
   frame_shift: 10
-  frame_lenght: 25
+  frame_length: 25
 
-wav2vec2_model_name_train: '/content/drive/MyDrive/proces2025/process_w2v2_train_embeddings.pkl'
-wav2vec2_model_name_val: '/content/drive/MyDrive/process_w2v2_val_embeddings.pkl'
+wav2vec2_model_name_train: '/content/drive/MyDrive/process2025/process_w2v2_train_embeddings.pkl'
+wav2vec2_model_name_val: '/content/drive/MyDrive/process2025/process_w2v2_val_embeddings.pkl'
 bert_model_name: '/content/drive/MyDrive/process2025/bert_model'
-phoneme_model_train: '/content/drive/MyDrive/process2025/process_phoneme_train_embeddings.pkl'
-phoneme_model_val: '/content/drive/MyDrive/process2025/process_phoneme_val_embeddings.pkl'
+phoneme_model_train: '/content/drive/MyDrive/process2025/process_bert_phoneme_train_embeddings.pkl'
+phoneme_model_val: '/content/drive/MyDrive/process2025/process_bert_phoneme_val_embeddings.pkl'
 egmpas_feats_train : '/content/drive/MyDrive/process2025/process_egmaps_train_features.pkl'
 egmpas_feats_val : '/content/drive/MyDrive/process2025/process_egmaps_val_features.pkl'
 trill_feats_train : '/content/drive/MyDrive/process2025/process_trill_train_embeddings.pkl'
 trill_feats_val : '/content/drive/MyDrive/process2025/process_trill_val_embeddings.pkl'
-
-
-
+bert_dir_val: '/content/drive/MyDrive/process2025/process_bert_val_embeddings.pkl'
+bert_dir_train: '/content/drive/MyDrive/process2025/process_bert_train_embeddings.pkl'
 
 training:
   batch_size: 32

@@ -10,7 +10,7 @@ class CustomModel(nn.Module):
     def __init__(self, embed_dim, num_heads, num_labels,bert_dir,input_dims,update_bert):
         super(CustomModel, self).__init__()
         self.num_features = len(input_dims)
-        self.conformer_blocks = nn.ModuleList([ConformerBlock(embed_dim) for _ in range(self.num_features)])
+        self.conformer_blocks = nn.ModuleList([ConformerBlock(dim=embed_dim) for _ in range(self.num_features)])
         self.gated_cross_attention_blocks = nn.ModuleList(
             [GatedCrossAttentionBlock(embed_dim, num_heads) for _ in range(self.num_features - 1)]
         )

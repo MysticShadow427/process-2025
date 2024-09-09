@@ -25,7 +25,13 @@ class CustomAudioTextDataset(Dataset):
             self.trill_embeds = pickle.load(f)
         
         self.data['transcribed_text'] = self.data['transcription_text'].apply(clean_transcription_text)
-        
+        label_mapping = {
+                'MCI': 0,
+                'HC': 1,
+                'Dimentia': 2
+            }
+
+        self.data['class_label'] = self.data['class_label'].map(label_mapping)
 
         self.fbank_params = fbank_params
         self.max_length = max_length
@@ -70,10 +76,9 @@ class CustomAudioTextDataset(Dataset):
         fbank = torchaudio.compliance.kaldi.fbank(waveform=waveform, num_mel_bins=self.fbank_params['num_mel_bins'],frame_length=self.fbank_params['frame_length'],frame_shift=self.fbank_params['frame_shift'])
         # spec augment
         fbank = self.freq_masking(fbank)
-        fbank = self.time_masking(fbank
-                                  )
+        fbank = self.time_masking(fbank)
         features = {
-            'fbank' : torch.tensor(fbank,dtype=torch.float),
+            'fbank' : fbank.clone().detach().to(dtype=torch.float),
             'wav2vec2_embeddings' : torch.tensor(wav2vec2_embeddings,dtype=torch.float),
             'egmaps_feats' : torch.tensor(egmaps_feats,dtype=torch.float),
             'trill_embeddings' : torch.tensor(trill_embeddings,dtype=torch.float),

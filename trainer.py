@@ -12,6 +12,8 @@ from custom_dataloader import collate_fn
 class Trainer:
     def __init__(self, model, train_dataset, val_dataset, batch_size=8, learning_rate=1e-4, wt_decay=1e-3,device='cuda'):
         self.model = model.to(device)
+        total_params = sum(p.numel() for p in model.parameters())
+        print(f"Total number of parameters in the model: {total_params}")
         self.device = device
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -19,7 +21,7 @@ class Trainer:
         self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, collate_fn=collate_fn)
         self.val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, collate_fn=collate_fn)
         
-        self.optimizer = AdamW(self.model.parameters(), lr=self.learning_rate,weight_decay=wt_decay)
+        self.optimizer = AdamW(self.model.parameters(), lr=float(self.learning_rate),weight_decay=float(wt_decay))
         
         self.classification_criterion = ClassificationLoss()
         self.regression_criterion = RMSELoss()
