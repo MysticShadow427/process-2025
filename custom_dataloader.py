@@ -24,11 +24,11 @@ class CustomAudioTextDataset(Dataset):
         with open(trill_embeds,'rb') as f:
             self.trill_embeds = pickle.load(f)
         
-        self.data['transcribed_text'] = self.data['transcription_text'].apply(clean_transcription_text)
+        self.data['transcription_text'] = self.data['transcription_text'].apply(clean_transcription_text)
         label_mapping = {
                 'MCI': 0,
                 'HC': 1,
-                'Dimentia': 2
+                'Dementia': 2
             }
 
         self.data['class_label'] = self.data['class_label'].map(label_mapping)
