@@ -14,14 +14,14 @@ class CustomModel(nn.Module):
         self.gated_cross_attention_blocks = nn.ModuleList(
             [GatedCrossAttentionBlock(embed_dim, num_heads) for _ in range(self.num_features - 1)]
         )
-        self.projection_blocks = nn.ModuleList([nn.Conv1d(input_dim, 512, kernel_size=1) for input_dim in input_dims])
+        self.projection_blocks = nn.ModuleList([nn.Conv1d(input_dim, embed_dim, kernel_size=1) for input_dim in input_dims])
 
-        self.bert = CustomBERT(bert_dir)
-        if not update_bert:
-            for param in self.bert.parameters():
-                param.requires_grad = False
+        # self.bert = CustomBERT(bert_dir)
+        # if not update_bert:
+        #     for param in self.bert.parameters():
+        #         param.requires_grad = False
 
-        self.bert_projection = nn.Linear(embed_dim,768)
+        # self.bert_projection = nn.Linear(embed_dim,768)
 
         self.classification_head = nn.Linear(embed_dim, num_labels)  
         self.regression_head = nn.Linear(embed_dim, 1)
@@ -33,19 +33,21 @@ class CustomModel(nn.Module):
 
     def forward(self, fbank_features, wav2vec2_features, egmap_features, trill_features, phonetic_features):
         # Start with the first feature being the input to the first conformer block
-        x = fbank_features  # [batch_size, num_time_steps, embed_dim]
-        x = self.projection_blocks[0](x) 
-
+        x = fbank_features  # [bs,nt,h]
+        # x = x.permute(0, 2, 1)
+        # x = self.projection_blocks[0](x)  # only project when we are not using 512 mels
+        # x = x.permute(0, 2, 1)
         for i in range(self.num_features - 1):
             x = self.conformer_blocks[i](x)
+            x = x.permute(0,2,1) # [bs,h,nt]
             projected_feature = self.projection_blocks[i+1]([wav2vec2_features, egmap_features, trill_features, phonetic_features][i])
-            x = self.gated_cross_attention_blocks[i](x.transpose(0, 1), projected_feature.transpose(0, 1))
-            x = x.transpose(0, 1)
+            x = self.gated_cross_attention_blocks[i](x.permute(0, 2, 1), projected_feature.permute(0, 2, 1))
+            x = x.permute(0, 2, 1)
 
         # Final conformer block
         x = self.conformer_blocks[-1](x)
         # Pass through bert for textual understanding
-        x = self.bert_projection(x)
+        # x = self.bert_projection(x)
         speech_embeddings = x
 
         # if asr:
@@ -54,7 +56,7 @@ class CustomModel(nn.Module):
         #     txt_feats = self.decoder(speech_embeddings,tgt)
         #     token_logits = self.lm_head(txt_feats)
 
-        _, x = self.bert(x) 
+        # _, x = self.bert(x) 
 
         # Classification head
         logits = self.classification_head(x)

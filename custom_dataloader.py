@@ -99,21 +99,28 @@ def collate_fn(batch):
     phonetic_features = [item['phonetic_features'] for item in features]
     bert_features = [item['bert_embeddings'] for item in features]
 
+    # def normalize(features):
+    #     features = torch.stack(features)
+    #     mean = features.mean(dim=0, keepdim=True)
+    #     std = features.std(dim=0, keepdim=True)
+    #     return (features - mean) / (std + 1e-8)
     def normalize(features):
-        features = torch.stack(features)
-        mean = features.mean(dim=0, keepdim=True)
-        std = features.std(dim=0, keepdim=True)
-        return (features - mean) / (std + 1e-8)
+        norms = torch.norm(features, p=2, dim=2, keepdim=True)
+        features= features/ norms
+        return features
     
-    egmap_features = normalize(egmap_features)
-    trill_features = normalize(trill_features)
-    phonetic_features = normalize(phonetic_features)
 
     fbank_features = pad_sequence(fbank_features, batch_first=True)
     wav2vec2_features = pad_sequence(wav2vec2_features, batch_first=True)
     egmap_features = pad_sequence(egmap_features, batch_first=True)
     trill_features = pad_sequence(trill_features, batch_first=True)
     phonetic_features = pad_sequence(phonetic_features, batch_first=True)
+
+    egmap_features = normalize(egmap_features)
+    trill_features = normalize(trill_features)
+    phonetic_features = normalize(phonetic_features)
+    bert_features = torch.stack(bert_features)
+
 
     classification_labels = torch.stack([label[0] for label in labels])
     regression_labels = torch.stack([label[1] for label in labels])
