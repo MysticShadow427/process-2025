@@ -23,6 +23,13 @@
 
 `512` should be the dimension and before sending to bert we need to project it to 768.
 
+NEED TO DO SOMETHING ABOUT THE SUBSAMPLING KIND OF LIKE WE WILL TAKE EVERY THIRD TIMESTEP FEATURE ONLY KIND OF LIKE THAT
+AND ALSO WE CAN FIX THE NUM_TIME_FRAMES
+WE WILL TRY CLASSICAL MODELS ON 29TH SEP SO OUR GPU GETS RESTORED TILL THAT TIME
+<hr>
+Some more features = 
+1. emobase - FeatureSet.emobase = 'emobase/emobase' (opensmile)
+2. 
 <hr>
 ## Training a BERT on the given text data
 
@@ -32,3 +39,4 @@ To load the model after training -
 ```python
 from transformers import AutoModel
 model = AutoModel.from_pretrained("/content/drive/MyDrive/process2025/bert_model")
+

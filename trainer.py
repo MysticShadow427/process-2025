@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from tqdm import tqdm
-from sklearn.metrics import f1_score, precision_score, recall_score
+from sklearn.metrics import f1_score, precision_score, recall_score,  mean_squared_error
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -86,6 +86,8 @@ class Trainer:
 
         all_preds = []
         all_labels = []
+        all_preds_reg = []
+        all_labels_reg = []
 
         with torch.no_grad():
             for batch_features, (classification_labels, regression_labels) in tqdm(self.val_loader, desc="Evaluating"):
@@ -118,6 +120,8 @@ class Trainer:
 
                 all_preds.extend(predicted.cpu().numpy())
                 all_labels.extend(classification_labels.cpu().numpy())
+                all_preds_reg.extend(regression_output.cpu().numpy())
+                all_labels_reg.extend(regression_labels.cpu().numpy())
 
         avg_loss = total_loss / len(self.val_loader)
         avg_classification_loss = total_classification_loss / len(self.val_loader)
@@ -127,24 +131,25 @@ class Trainer:
 
         all_preds = np.array(all_preds)
         all_labels = np.array(all_labels)
+        all_preds_reg = np.array(all_preds_reg)
+        all_labels_reg = np.array(all_labels_reg)
         macro_f1 = f1_score(all_labels, all_preds, average='macro')
         precision = precision_score(all_labels, all_preds, average='macro')
         recall = recall_score(all_labels, all_preds, average='macro')
         f1 = f1_score(all_labels, all_preds, average='weighted')
-
-        regression_outputs = torch.cat([regression_output for _, _, regression_output in self.val_loader], dim=0)
-        rmse = torch.sqrt(torch.mean((regression_outputs - regression_labels) ** 2)).item()
+        mse = mean_squared_error(all_labels_reg,all_preds_reg)
+        rmse = np.sqrt(mse)
 
         print(f"Validation loss: {avg_loss:.4f}")
         print(f"Classification loss: {avg_classification_loss:.4f}")
         print(f"Regression loss: {avg_regression_loss:.4f}")
         print(f"Similarity loss: {avg_similarity_loss:.4f}")
         print(f"Accuracy: {accuracy:.4f}")
+        print(f"RMSE: {rmse:.4f}")
         print(f"Macro F1: {macro_f1:.4f}")
         print(f"Macro Precision: {precision:.4f}")
         print(f"Macro Recall: {recall:.4f}")
         print(f"Weighted F1 Score: {f1:.4f}")
-        print(f"RMSE: {rmse:.4f}")
 
         return avg_loss, avg_classification_loss, avg_regression_loss, avg_similarity_loss
 

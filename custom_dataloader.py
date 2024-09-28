@@ -53,14 +53,18 @@ class CustomAudioTextDataset(Dataset):
         regression_label = row['converted_mmse']
         # wav2vec2 embeddings
         wav2vec2_embeddings = self.w2v2[idx]
+        wav2vec2_embeddings = subsample_tensor(wav2vec2_embeddings)
         # phonetic features
         phonetic_features = self.phonemes[idx]
+        phonetic_features = subsample_tensor(phonetic_features)
         # bert embeddings
         bert_embeddings = self.bert_feats[idx]
         # egmaps features
         egmaps_feats = self.egmaps_feats[idx].values
+        egmaps_feats = subsample_tensor(egmaps_feats)
         # trill embeddings
         trill_embeddings = self.trill_embeds[idx]
+        trill_embeddings = subsample_tensor(trill_embeddings)
 
         # FBanks
         waveform, sample_rate = torchaudio.load(audio_path)
@@ -81,6 +85,7 @@ class CustomAudioTextDataset(Dataset):
         waveform,_ = self.speed_pertubation(waveform)
         # fbank featurs
         fbank = torchaudio.compliance.kaldi.fbank(waveform=waveform, num_mel_bins=self.fbank_params['num_mel_bins'],frame_length=self.fbank_params['frame_length'],frame_shift=self.fbank_params['frame_shift'])
+        fbank = subsample_tensor(fbank)
         # spec augment
         fbank = self.freq_masking(fbank)
         fbank = self.time_masking(fbank)
@@ -155,3 +160,8 @@ def calculate_batch_size_in_mb(batch_features):
     for name, feature in batch_features.items():
         total_size += get_tensor_size_in_mb(feature)
     return total_size
+
+def subsample_tensor(tensor,n=3):
+    # Subsample by taking every nth time frame
+    tensor_subsampled = tensor[:, ::n, :]
+    return tensor_subsampled
