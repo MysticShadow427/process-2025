@@ -68,6 +68,13 @@ class CustomAudioTextDataset(Dataset):
             resampler = Resample(orig_freq=sample_rate, new_freq=16_000)
             waveform = resampler(waveform)
         
+        max_duration_seconds = 30
+        max_samples = max_duration_seconds * 16_000  # For a 16kHz sample rate
+
+        # Check if the waveform length exceeds 30 seconds
+        if waveform.size(1) > max_samples:
+            waveform = waveform[:, :max_samples]
+        
         #trim
         waveform = self.trim(waveform,16000)
         # speed pertubation

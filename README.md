@@ -21,7 +21,6 @@
 - what augmentations can we apply together, what effect do they have if aplied together.
 - also we need to check whether 1d cnn feture projections are better or onoe layer nueral nets are better.
 
-
 `512` should be the dimension and before sending to bert we need to project it to 768.
 
 <hr>

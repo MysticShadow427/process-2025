@@ -70,6 +70,7 @@ class CustomModel(nn.Module):
 
         # Regression head
         regression_output = F.leaky_relu(self.regression_head(x))
+        
         speech_embeddings = self.bert_projection(x)
         return logits, regression_output, speech_embeddings
     

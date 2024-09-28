@@ -48,11 +48,11 @@ class Trainer:
 
             self.optimizer.zero_grad()
 
-            logits, regression_output, speech_features = self.model(fbank_features, wav2vec2_features, egmap_features, trill_features, phonetic_features)
+            logits, regression_output, speech_features = self.model(fbank_features,wav2vec2_features,egmap_features,trill_features,phonetic_features)
 
             classification_loss = self.classification_criterion(logits, classification_labels)
-            regression_loss = self.regression_criterion(regression_output, regression_labels)
-            similarity_loss = self.similarity_criterion(speech_features,bert_features,classification_labels)
+            regression_loss = self.regression_criterion(regression_output.squeeze(dim=1), regression_labels)
+            similarity_loss = self.similarity_criterion(speech_features,bert_features.mean(dim=1),classification_labels)
 
             loss = classification_loss + regression_loss + 0.8 * similarity_loss
             total_loss += loss.item()
@@ -90,15 +90,21 @@ class Trainer:
         with torch.no_grad():
             for batch_features, (classification_labels, regression_labels) in tqdm(self.val_loader, desc="Evaluating"):
                 
-                fbank_features, wav2vec2_features, bert_features = [f.to(self.device) for f in batch_features]
+                fbank_features = batch_features['fbank_features'].to(self.device)
+                wav2vec2_features = batch_features['wav2vec2_features'].to(self.device)
+                egmap_features = batch_features['egmap_features'].to(self.device)
+                trill_features = batch_features['trill_features'].to(self.device)
+                phonetic_features = batch_features['phonetic_features'].to(self.device)
+                bert_features = batch_features['bert_features'].to(self.device)
+
                 classification_labels = classification_labels.to(self.device)
                 regression_labels = regression_labels.to(self.device)
 
-                logits, regression_output, speech_features = self.model(fbank_features, wav2vec2_features, bert_features)
+                logits, regression_output, speech_features = self.model(fbank_features,wav2vec2_features,egmap_features,trill_features,phonetic_features)
 
                 classification_loss = self.classification_criterion(logits, classification_labels)
-                regression_loss = self.regression_criterion(regression_output, regression_labels)
-                similarity_loss = self.similarity_criterion(speech_features,bert_features,classification_labels)
+                regression_loss = self.regression_criterion(regression_output.squeeze(dim=1), regression_labels)
+                similarity_loss = self.similarity_criterion(speech_features,bert_features.mean(dim=1),classification_labels)
 
                 loss = classification_loss + regression_loss + similarity_loss
                 total_loss += loss.item()
@@ -145,19 +151,28 @@ class Trainer:
     def fit(self, epochs):
         train_losses = []
         val_losses = []
+        train_cls_loss = []
+        val_cls_loss = []
+        train_reg_loss = []
+        val_reg_loss = []
         
         for epoch in range(epochs):
             print(f"\nEpoch {epoch+1}/{epochs}")
     
             avg_train_loss, avg_train_classification_loss, avg_train_regression_loss,_ = self.train()
             train_losses.append(avg_train_loss)
+            train_cls_loss.append(avg_train_classification_loss)
+            train_reg_loss.append(avg_train_regression_loss)
+
 
             avg_val_loss, avg_val_classification_loss, avg_val_regression_loss,_ = self.validate()
             val_losses.append(avg_val_loss)
+            val_cls_loss.append(avg_val_classification_loss)
+            val_reg_loss.append(avg_val_regression_loss)
         
-        self.plot_loss_curves(train_losses, val_losses)
+        self.plot_loss_curves(train_losses, val_losses,train_cls_loss,val_cls_loss,train_reg_loss,val_reg_loss)
 
-    def plot_loss_curves(self, train_losses, val_losses):
+    def plot_loss_curves(self, train_losses, val_losses,train_cls_loss,val_cls_loss,train_reg_loss,val_reg_loss):
         plt.figure(figsize=(12, 6))
         plt.plot(train_losses, label='Training Loss')
         plt.plot(val_losses, label='Validation Loss')
@@ -167,7 +182,27 @@ class Trainer:
         plt.legend()
         plt.grid(True)
         plt.show()
+        plt.savefig('/content/cls_loss_curve.png')
+        plt.figure(figsize=(12, 6))
+        plt.plot(train_cls_loss, label='Training Loss')
+        plt.plot(val_cls_loss, label='Validation Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title('Loss Curves')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
         plt.savefig('/content/loss_curve.png')
+        plt.figure(figsize=(12, 6))
+        plt.plot(train_reg_loss, label='Training Loss')
+        plt.plot(val_reg_loss, label='Validation Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title('Loss Curves')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+        plt.savefig('/content/reg_loss_curve.png')
 
     def save_checkpoint(self, path):
         torch.save(self.model.state_dict(), path)
