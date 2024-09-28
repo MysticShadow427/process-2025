@@ -140,6 +140,16 @@ def fill_missing_mmse(df):
 def generate_submission():
     pass
 
+def model_size_in_mb(model):
+    total_params = 0
+    for param in model.parameters():
+        total_params += param.numel() * param.element_size()  # Number of elements * size per element (in bytes)
+    
+    for buffer in model.buffers():
+        total_params += buffer.numel() * buffer.element_size()  # Also consider buffers
+
+    total_params_in_mb = total_params / (1024 ** 2)  # Convert from bytes to megabytes
+    return total_params_in_mb
 # FEATURE EXTRACTION CODE 
 
 # import audiofile

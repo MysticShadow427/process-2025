@@ -7,6 +7,8 @@ class RMSELoss(nn.Module):
         super(RMSELoss, self).__init__()
         self.mse = nn.MSELoss()
     def forward(self, predictions, targets):
+        print(f"[REGRESSION PREDS] {predictions.shape}")
+        print(f"[TARGETS] {targets.shape}")
         mse = self.mse(predictions, targets)
         rmse = torch.sqrt(mse)
         return rmse
@@ -25,7 +27,10 @@ class SimilarityLoss(nn.Module):
         self.margin = margin
 
     def forward(self, audio_embeddings, text_embeddings, labels):
-        distances = F.pairwise_distance(audio_embeddings, text_embeddings)
+        print(f"[AUDIO] {audio_embeddings.shape}")
+        print(f"[TEXT] {text_embeddings.shape}")
+        print(f"[LABELS] {labels.shape}")
+        distances = F.pairwise_distance(audio_embeddings, text_embeddings.mean(dim=1))
         loss = labels * torch.pow(distances, 2) + (1 - labels) * torch.pow(torch.clamp(self.margin - distances, min=0.0), 2)
         
         return torch.mean(loss)

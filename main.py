@@ -2,6 +2,7 @@ import torch
 from trainer import Trainer 
 from model import CustomModel  
 from custom_dataloader import CustomAudioTextDataset 
+from utils import model_size_in_mb
 import yaml
 
 def load_config(config_path):
@@ -32,6 +33,7 @@ def main():
     bert_dir_val = cfg['bert_dir_val']
 
     model = CustomModel(embed_dim,num_heads,num_labels,bert_dir,input_dims,update_bert)
+    print(f"Model size: {model_size_in_mb(model):.2f} MB")
     print("\033[34mModel Loaded...\033[0m")
     train_csv_path = cfg['data']['train_csv_path']
     val_csv_path = cfg['data']['val_csv_path'] 

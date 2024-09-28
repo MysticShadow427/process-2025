@@ -133,5 +133,18 @@ def collate_fn(batch):
         'phonetic_features': phonetic_features,
         'bert_features' : bert_features
     }
+    # total_batch_size_in_mb = calculate_batch_size_in_mb(feats)
+    # print(f"Total batch size: {total_batch_size_in_mb:.2f} MB")
 
     return feats, (classification_labels, regression_labels)
+
+def get_tensor_size_in_mb(tensor):
+    if tensor is None:
+        return 0
+    return tensor.numel() * tensor.element_size() / (1024 ** 2)
+
+def calculate_batch_size_in_mb(batch_features):
+    total_size = 0
+    for name, feature in batch_features.items():
+        total_size += get_tensor_size_in_mb(feature)
+    return total_size

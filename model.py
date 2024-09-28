@@ -21,8 +21,7 @@ class CustomModel(nn.Module):
         #     for param in self.bert.parameters():
         #         param.requires_grad = False
 
-        # self.bert_projection = nn.Linear(embed_dim,768)
-
+        self.bert_projection = nn.Linear(embed_dim,768)
         self.classification_head = nn.Linear(embed_dim, num_labels)  
         self.regression_head = nn.Linear(embed_dim, 1)
 
@@ -34,21 +33,29 @@ class CustomModel(nn.Module):
     def forward(self, fbank_features, wav2vec2_features, egmap_features, trill_features, phonetic_features):
         # Start with the first feature being the input to the first conformer block
         x = fbank_features  # [bs,nt,h]
+        #print(f'[FBANK]{x.shape}')
         # x = x.permute(0, 2, 1)
         # x = self.projection_blocks[0](x)  # only project when we are not using 512 mels
         # x = x.permute(0, 2, 1)
         for i in range(self.num_features - 1):
             x = self.conformer_blocks[i](x)
-            x = x.permute(0,2,1) # [bs,h,nt]
-            projected_feature = self.projection_blocks[i+1]([wav2vec2_features, egmap_features, trill_features, phonetic_features][i])
-            x = self.gated_cross_attention_blocks[i](x.permute(0, 2, 1), projected_feature.permute(0, 2, 1))
-            x = x.permute(0, 2, 1)
+            #x = x.permute(0,2,1) # [bs,h,nt]
+            #print(f"[1st projection]{x.shape}")
+            projected_feature = self.projection_blocks[i]([wav2vec2_features, egmap_features, trill_features, phonetic_features][i].permute(0,2,1))
+            #print(f"[projected feature]{projected_feature.shape}")
+            projected_feature = projected_feature.permute(0, 2, 1)
+            #print(f"[projected feature after permute]{projected_feature.shape}")
+            x = self.gated_cross_attention_blocks[i](x, projected_feature)
+            #print(f"[After x_attenion]{x.shape}")
+            #x = x.permute(0, 2, 1)
+            #print(f"[2nd projection]{x.shape}")
 
         # Final conformer block
         x = self.conformer_blocks[-1](x)
         # Pass through bert for textual understanding
         # x = self.bert_projection(x)
-        speech_embeddings = x
+        #speech_embeddings = x
+        x = x.mean(dim=1)
 
         # if asr:
         #     tgt = self.pos_embedding(tgt)
@@ -63,14 +70,14 @@ class CustomModel(nn.Module):
 
         # Regression head
         regression_output = F.leaky_relu(self.regression_head(x))
-
+        speech_embeddings = self.bert_projection(x)
         return logits, regression_output, speech_embeddings
     
 class GatedCrossAttentionBlock(nn.Module):
     def __init__(self, embed_dim, num_heads):
         super(GatedCrossAttentionBlock, self).__init__()
     
-        self.cross_attention = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads)
+        self.cross_attention = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads, batch_first = True)
         self.tanh1 = nn.Tanh()
         self.ffn = nn.Linear(embed_dim, embed_dim)
         self.tanh2 = nn.Tanh()
