@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from custom_losses import RMSELoss,ClassificationLoss,SimilarityLoss
-from custom_dataloader import collate_fn
+from custom_dataloader import collate_fn, subsample_tensor
 
 class Trainer:
     def __init__(self, model, train_dataset, val_dataset, batch_size=8, learning_rate=1e-4, wt_decay=1e-3,device='cuda'):
@@ -36,11 +36,11 @@ class Trainer:
 
         for batch_features, (classification_labels, regression_labels) in tqdm(self.train_loader, desc="Training"):
             
-            fbank_features = batch_features['fbank_features'].to(self.device)
-            wav2vec2_features = batch_features['wav2vec2_features'].to(self.device)
-            egmap_features = batch_features['egmap_features'].to(self.device)
-            trill_features = batch_features['trill_features'].to(self.device)
-            phonetic_features = batch_features['phonetic_features'].to(self.device)
+            fbank_features = subsample_tensor(batch_features['fbank_features']).to(self.device)
+            wav2vec2_features = subsample_tensor(batch_features['wav2vec2_features']).to(self.device)
+            egmap_features = subsample_tensor(batch_features['egmap_features']).to(self.device)
+            trill_features = subsample_tensor(batch_features['trill_features']).to(self.device)
+            phonetic_features = subsample_tensor(batch_features['phonetic_features']).to(self.device)
             bert_features = batch_features['bert_features'].to(self.device)
 
             classification_labels = classification_labels.to(self.device)
@@ -61,6 +61,8 @@ class Trainer:
             total_similarity_loss += similarity_loss.item()
 
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+
             self.optimizer.step()
 
         avg_loss = total_loss / len(self.train_loader)
@@ -92,11 +94,11 @@ class Trainer:
         with torch.no_grad():
             for batch_features, (classification_labels, regression_labels) in tqdm(self.val_loader, desc="Evaluating"):
                 
-                fbank_features = batch_features['fbank_features'].to(self.device)
-                wav2vec2_features = batch_features['wav2vec2_features'].to(self.device)
-                egmap_features = batch_features['egmap_features'].to(self.device)
-                trill_features = batch_features['trill_features'].to(self.device)
-                phonetic_features = batch_features['phonetic_features'].to(self.device)
+                fbank_features = subsample_tensor(batch_features['fbank_features']).to(self.device)
+                wav2vec2_features = subsample_tensor(batch_features['wav2vec2_features']).to(self.device)
+                egmap_features = subsample_tensor(batch_features['egmap_features']).to(self.device)
+                trill_features = subsample_tensor(batch_features['trill_features']).to(self.device)
+                phonetic_features = subsample_tensor(batch_features['phonetic_features']).to(self.device)
                 bert_features = batch_features['bert_features'].to(self.device)
 
                 classification_labels = classification_labels.to(self.device)

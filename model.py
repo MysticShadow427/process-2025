@@ -14,6 +14,7 @@ class CustomModel(nn.Module):
         self.gated_cross_attention_blocks = nn.ModuleList(
             [GatedCrossAttentionBlock(embed_dim, num_heads) for _ in range(self.num_features - 1)]
         )
+        self.normalize_layers = nn.ModuleList(nn.LayerNorm(embed_dim) for _ in range(self.num_features - 1))
         self.projection_blocks = nn.ModuleList([nn.Conv1d(input_dim, embed_dim, kernel_size=1) for input_dim in input_dims])
 
         # self.bert = CustomBERT(bert_dir)
@@ -46,6 +47,7 @@ class CustomModel(nn.Module):
             projected_feature = projected_feature.permute(0, 2, 1)
             #print(f"[projected feature after permute]{projected_feature.shape}")
             x = self.gated_cross_attention_blocks[i](x, projected_feature)
+            x = self.normalize_layers[i](x)
             #print(f"[After x_attenion]{x.shape}")
             #x = x.permute(0, 2, 1)
             #print(f"[2nd projection]{x.shape}")
@@ -70,7 +72,7 @@ class CustomModel(nn.Module):
 
         # Regression head
         regression_output = F.leaky_relu(self.regression_head(x))
-        
+
         speech_embeddings = self.bert_projection(x)
         return logits, regression_output, speech_embeddings
     
