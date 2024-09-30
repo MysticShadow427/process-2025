@@ -11,7 +11,7 @@ import torchaudio.transforms as T
 from audiomentations import Trim
 
 class CustomAudioTextDataset(Dataset):
-    def __init__(self, csv_file, wav2vec2_model_name, fbank_params, bert_dir,egmaps_dir,trill_embeds,phoneme_model,max_length=100):
+    def __init__(self, csv_file, wav2vec2_model_name, fbank_params, bert_dir,egmaps_dir,trill_embeds,phoneme_model,max_length=100, train = True):
         self.data = pd.read_csv(csv_file)
         with open(wav2vec2_model_name, 'rb') as f:
              self.w2v2 = pickle.load(f) # list of numpy arrays
@@ -23,7 +23,7 @@ class CustomAudioTextDataset(Dataset):
             self.egmaps_feats = pickle.load(f)
         with open(trill_embeds,'rb') as f:
             self.trill_embeds = pickle.load(f)
-        
+        self.train = train
         self.data['transcription_text'] = self.data['transcription_text'].apply(clean_transcription_text)
         label_mapping = {
                 'MCI': 0,
@@ -68,7 +68,7 @@ class CustomAudioTextDataset(Dataset):
             resampler = Resample(orig_freq=sample_rate, new_freq=16_000)
             waveform = resampler(waveform)
         
-        max_duration_seconds = 30
+        max_duration_seconds = 60
         max_samples = max_duration_seconds * 16_000  # For a 16kHz sample rate
 
         # Check if the waveform length exceeds 30 seconds
@@ -77,13 +77,16 @@ class CustomAudioTextDataset(Dataset):
         
         #trim
         waveform = self.trim(waveform,16000)
-        # speed pertubation
-        waveform,_ = self.speed_pertubation(waveform)
-        # fbank featurs
-        fbank = torchaudio.compliance.kaldi.fbank(waveform=waveform, num_mel_bins=self.fbank_params['num_mel_bins'],frame_length=self.fbank_params['frame_length'],frame_shift=self.fbank_params['frame_shift'])
-        # spec augment
-        fbank = self.freq_masking(fbank)
-        fbank = self.time_masking(fbank)
+        if self.train:
+            # speed pertubation
+            waveform,_ = self.speed_pertubation(waveform)
+            # fbank featurs
+            fbank = torchaudio.compliance.kaldi.fbank(waveform=waveform, num_mel_bins=self.fbank_params['num_mel_bins'],frame_length=self.fbank_params['frame_length'],frame_shift=self.fbank_params['frame_shift'])
+            # spec augment
+            fbank = self.freq_masking(fbank)
+            fbank = self.time_masking(fbank)
+        else:
+            fbank = torchaudio.compliance.kaldi.fbank(waveform=waveform, num_mel_bins=self.fbank_params['num_mel_bins'],frame_length=self.fbank_params['frame_length'],frame_shift=self.fbank_params['frame_shift'])
         features = {
             'fbank' : fbank.clone().detach().to(dtype=torch.float),
             'wav2vec2_embeddings' : torch.tensor(wav2vec2_embeddings,dtype=torch.float),
