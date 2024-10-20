@@ -7,15 +7,52 @@ from einops import rearrange
 from einops.layers.torch import Rearrange
 
 class CustomModel(nn.Module):
-    def __init__(self, embed_dim, num_heads, num_labels,bert_dir,input_dims,update_bert):
+    def __init__(self, embed_dim, num_heads, num_labels,bert_dir,input_dims,update_bert,depth):
         super(CustomModel, self).__init__()
         self.num_features = len(input_dims)
-        self.conformer_blocks = nn.ModuleList([ConformerBlock(dim=embed_dim) for _ in range(self.num_features)])
+        self.conformer_blocks = nn.ModuleList([Conformer(dim=embed_dim,depth=depth) for _ in range(self.num_features)])
+        # self.conformer = Conformer(dim=embed_dim, depth=depth)
         self.gated_cross_attention_blocks = nn.ModuleList(
             [GatedCrossAttentionBlock(embed_dim, num_heads) for _ in range(self.num_features - 1)]
         )
+        self.bottle_neck = nn.ModuleList(
+            [nn.Sequential(
+            nn.Linear(embed_dim,embed_dim*4),
+            nn.GELU(),
+            nn.Linear(embed_dim*4,embed_dim)
+            
+        ) for _ in range(self.num_features - 1)]
+        )
+        # for the model having only 1d cnn
+        # self.bottle_neck = nn.ModuleList(
+        #     [nn.Sequential(
+        #     nn.Linear(embed_dim,embed_dim*4),
+        #     nn.GELU(),
+        #     nn.Linear(embed_dim*4,embed_dim)
+            
+        # ) for _ in range(4)]
+        # )
+        self.nonlinear_projection = nn.Sequential(
+            nn.Linear(embed_dim,embed_dim*4),
+            nn.GELU(),
+            nn.Linear(embed_dim*4,embed_dim)
+        )
+        # self.fusion_attention_layer = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=1)
+        # self.fusion_cnn_layer = nn.Conv1d(in_channels=5, out_channels=1, kernel_size=1)
+        # self.gate_fusion = nn.Sequential(
+        #     nn.Linear(embed_dim,5),
+        #     nn.Sigmoid())
+        
+        # self.weighted_fusion = nn.Parameter(torch.ones(5))  # Learnable weights
+
         self.normalize_layers = nn.ModuleList(nn.LayerNorm(embed_dim) for _ in range(self.num_features - 1))
-        self.projection_blocks = nn.ModuleList([nn.Conv1d(input_dim, embed_dim, kernel_size=1) for input_dim in input_dims])
+        # try deep 1d cnns for model without cross attention, kernel-SIE=1 YIELDED BETTE RESULTS
+        self.projection_blocks = nn.ModuleList([nn.Conv1d(input_dim, embed_dim, kernel_size=1,dilation=3) for input_dim in input_dims])
+        # self.projection_blocks = nn.ModuleList([nn.Sequential(
+        #     nn.Conv1d(input_dim,embed_dim//4,dilation=3,kernel_size=1),
+        #     nn.GELU(),
+        #     nn.Conv1d(embed_dim//4,embed_dim,dilation=3,kernel_size=1)
+        # ) for input_dim in input_dims])
 
         # self.bert = CustomBERT(bert_dir)
         # if not update_bert:
@@ -31,33 +68,63 @@ class CustomModel(nn.Module):
         #     self.decoder = nn.TransformerDecoder(self.decoder_layer,num_layers=1)
         #     self.lm_head = nn.Linear(embed_dim,num_vocab)
 
-    def forward(self, fbank_features, wav2vec2_features, egmap_features, trill_features, phonetic_features):
+    def forward(self, fbank_features, wav2vec2_features, egmap_features, trill_features):
         # Start with the first feature being the input to the first conformer block
         x = fbank_features  # [bs,nt,h]
         #print(f'[FBANK]{x.shape}')
-        # x = x.permute(0, 2, 1)
-        # x = self.projection_blocks[0](x)  # only project when we are not using 512 mels
-        # x = x.permute(0, 2, 1)
+        # x = F.gelu(self.bottle_neck[0](F.gelu(self.conformer(x).mean(dim=1))))
+        # x_w2v2 = F.gelu(self.bottle_neck[1](F.gelu(self.projection_blocks[0](wav2vec2_features.permute(0,2,1)).permute(0,2,1).mean(dim=1))))
+        # x_egmap = F.gelu(self.bottle_neck[2](F.gelu(self.projection_blocks[1](egmap_features.permute(0,2,1)).permute(0,2,1).mean(dim=1))))
+        # x_trill = F.gelu(self.bottle_neck[3](F.gelu(self.projection_blocks[2](trill_features.permute(0,2,1)).permute(0,2,1).mean(dim=1))))
+        # add bottleneck for each feature if want
+        
+        # x_bert = self.projection_blocks[3](bert_features.permute(0,2,1)).permute(0,2,1).mean(dim=1)
+        #CONCAT NOW here or with below code with cross attention too, dono me use kar sakte ho ye fusion ,dont use mean
+        # x = torch.stack([x, x_w2v2, x_egmap, x_trill], dim=1)  # shape [bs, 5, hidden_dim]
+        #1. Attention based fusion
+        # x, _ = self.fusion_attention_layer(x,x,x)
+        # x = F.gelu(x)
+        # 2. Convolutional fusion
+        # x = self.fusion_cnn_layer(x).squeeze(1)
+        # 3. Gated Fusion
+        # gates = self.gate_fusion(x)
+        # x = sum(gates[:, i].unsqueeze(-1) * t for i, t in enumerate([x, x_w2v2, x_trill, x_egmap]))  # Gated sum
+        # 4. Weighted fusion
+        # x = torch.sum(w * t for w, t in zip(self.weighted_fusion, [x, x_w2v2, x_egmap, x_trill]))  # Weighted sum, shape [bs, hidden_dim]
+
         for i in range(self.num_features - 1):
+            residual = x
             x = self.conformer_blocks[i](x)
             #x = x.permute(0,2,1) # [bs,h,nt]
             #print(f"[1st projection]{x.shape}")
-            projected_feature = self.projection_blocks[i]([wav2vec2_features, egmap_features, trill_features, phonetic_features][i].permute(0,2,1))
+            projected_feature = self.projection_blocks[i]([wav2vec2_features, egmap_features, trill_features][i].permute(0,2,1))
             #print(f"[projected feature]{projected_feature.shape}")
             projected_feature = projected_feature.permute(0, 2, 1)
             #print(f"[projected feature after permute]{projected_feature.shape}")
+            projected_feature = F.gelu(projected_feature)
             x = self.gated_cross_attention_blocks[i](x, projected_feature)
+            x = F.gelu(x)
+            x = self.bottle_neck[i](x)
             x = self.normalize_layers[i](x)
+            x = F.gelu(x) + residual
+            # x += residual gives error
             #print(f"[After x_attenion]{x.shape}")
             #x = x.permute(0, 2, 1)
             #print(f"[2nd projection]{x.shape}")
-
+        residual = x
         # Final conformer block
         x = self.conformer_blocks[-1](x)
+        x = F.gelu(x)
+        x = residual + x
+        # x += residual
         # Pass through bert for textual understanding
         # x = self.bert_projection(x)
-        #speech_embeddings = x
+        # speech_embeddings = x
+        # pool along num_time_step dimension
         x = x.mean(dim=1)
+        residual = x
+        x = self.nonlinear_projection(x)
+        x = residual + F.gelu(x) #residual +
 
         # if asr:
         #     tgt = self.pos_embedding(tgt)
@@ -289,6 +356,45 @@ class ConformerBlock(nn.Module):
         x = self.conv(x) + x
         x = self.ff2(x) + x
         x = self.post_norm(x)
+        return x
+
+class Conformer(nn.Module):
+    def __init__(
+        self,
+        dim,
+        *,
+        depth,
+        dim_head = 64,
+        heads = 8,
+        ff_mult = 4,
+        conv_expansion_factor = 2,
+        conv_kernel_size = 31,
+        attn_dropout = 0.,
+        ff_dropout = 0.,
+        conv_dropout = 0.,
+        conv_causal = False
+    ):
+        super().__init__()
+        self.dim = dim
+        self.layers = nn.ModuleList([])
+
+        for _ in range(depth):
+            self.layers.append(ConformerBlock(
+                dim = dim,
+                dim_head = dim_head,
+                heads = heads,
+                ff_mult = ff_mult,
+                conv_expansion_factor = conv_expansion_factor,
+                conv_kernel_size = conv_kernel_size,
+                conv_causal = conv_causal
+
+            ))
+
+    def forward(self, x):
+
+        for block in self.layers:
+            x = block(x)
+
         return x
 
 class CustomBERT(nn.Module):

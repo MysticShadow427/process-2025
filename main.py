@@ -2,7 +2,7 @@ import torch
 from trainer import Trainer 
 from model import CustomModel  
 from custom_dataloader import CustomAudioTextDataset 
-from utils import model_size_in_mb
+from utils import model_size_in_mb, update_csv
 import yaml
 
 def load_config(config_path):
@@ -17,11 +17,12 @@ def main():
     print("\033[34mConfig Loaded...\033[0m")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("\033[34mDevice: 'cuda'\033[0m")
-    input_dims = [512,25,2048,512] #egmaps = 25, trill = 2048,w2v2=512,w2v2phonetic = 512
+    input_dims = [512,25,2048]#768]#512] #egmaps = 25, trill = 2048,w2v2=512,w2v2phonetic = 512, bert - 768
     bert_dir = cfg['bert_model_name']
     num_labels = cfg['model']['num_labels']
     embed_dim = cfg['model']['embed_dim']
     num_heads = cfg['model']['num_head']
+    depth = cfg['model']['depth']
     update_bert = cfg['model']['update_bert']
     phoneme_model_train = cfg['phoneme_model_train']
     phoneme_model_val = cfg['phoneme_model_val']
@@ -31,12 +32,15 @@ def main():
     trill_val = cfg['trill_feats_val']
     bert_dir_train = cfg['bert_dir_train']
     bert_dir_val = cfg['bert_dir_val']
+    epochs=cfg['training']['epochs']
 
-    model = CustomModel(embed_dim,num_heads,num_labels,bert_dir,input_dims,update_bert)
+    model = CustomModel(embed_dim,num_heads,num_labels,bert_dir,input_dims,update_bert,depth)
     print(f"Model size: {model_size_in_mb(model):.2f} MB")
     print("\033[34mModel Loaded...\033[0m")
     train_csv_path = cfg['data']['train_csv_path']
-    val_csv_path = cfg['data']['val_csv_path'] 
+    val_csv_path = cfg['data']['val_csv_path']
+    train_csv_path = update_csv(train_csv_path)
+    val_csv_path = update_csv(val_csv_path) 
     
     fbank_params = {
         "num_mel_bins": cfg['fbanks']['num_mel_bins'],
@@ -61,7 +65,10 @@ def main():
         batch_size=cfg['training']['batch_size'],
         learning_rate=cfg['training']['learning_rate'],
         wt_decay= cfg['training']['weight_decay'],
-        device=device
+        device=device,
+        epochs = epochs,
+        warmup_steps=cfg['training']['warmup_steps'],
+        embed_dim=embed_dim
     )
     
     print("\033[34mTraining started...\033[0m")

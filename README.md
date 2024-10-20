@@ -40,3 +40,15 @@ To load the model after training -
 from transformers import AutoModel
 model = AutoModel.from_pretrained("/content/drive/MyDrive/process2025/bert_model")
 
+scp -J dkayande@linux-bastion.tudelft.nl -pr /Users/devendrakayande/Desktop/process/* dkayande@login.delftblue.tudelft.nl:/scratch/dkayande/process/
+
+
+scp -J dkayande@linux-bastion.tudelft.nl -pr /Users/devendrakayande/Desktop/process2025 dkayande@login.delftblue.tudelft.nl:/scratch/dkayande/process/data
+
+scp -J dkayande@linux-bastion.tudelft.nl -pr /Users/devendrakayande/Desktop/PROCESS-V1.zip dkayande@login.delftblue.tudelft.nl:/scratch/dkayande/process/data/
+upload code 
+upload process2025
+uploading the zip file and then unzip it in the data folder on delftblue
+
+pip install torch==2.4.1+cu121 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+ to install pytorhc on delftblue

@@ -10,6 +10,7 @@ import librosa
 import re
 
 
+
 def generate_csv_dataset():
     demo_info_path = "/content/drive/MyDrive/process2025/dem-info.csv"
     base_folder_path = "/content/drive/MyDrive/PROCESS-V1"
@@ -136,6 +137,23 @@ def fill_missing_mmse(df):
         df.at[i, 'Converted-MMSE'] = mean_mmse
     
     return df
+
+def update_csv(csv_file_path):
+    df = pd.read_csv(csv_file_path)
+    
+    # Modify the 'audio_path' column by removing '/drive/MyDrive'
+    df['audio_path'] = df['audio_path'].str.replace('/drive/MyDrive', '/scratch/dkayande/process/data', regex=False)
+    
+    # Get the original file name
+    file_name = os.path.basename(csv_file_path)
+    
+    # Save the updated CSV file to /content/ with the same name
+    output_file_path = os.path.join('/scratch/dkayande/process/data', file_name)
+    
+    df.to_csv(output_file_path, index=False)
+    
+    print(f"Updated CSV saved at: {output_file_path}")
+    return output_file_path
 
 def generate_submission():
     pass

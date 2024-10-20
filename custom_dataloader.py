@@ -9,14 +9,15 @@ from utils import clean_transcription_text
 import pickle
 import torchaudio.transforms as T
 from audiomentations import Trim
+import torch.nn.functional as F
 
 class CustomAudioTextDataset(Dataset):
     def __init__(self, csv_file, wav2vec2_model_name, fbank_params, bert_dir,egmaps_dir,trill_embeds,phoneme_model,max_length=100, train = True):
         self.data = pd.read_csv(csv_file)
         with open(wav2vec2_model_name, 'rb') as f:
              self.w2v2 = pickle.load(f) # list of numpy arrays
-        with open(phoneme_model, 'rb') as f:
-             self.phonemes = pickle.load(f)
+        # with open(phoneme_model, 'rb') as f:
+        #      self.phonemes = pickle.load(f)
         with open(bert_dir,'rb') as f:
             self.bert_feats = pickle.load(f)
         with open(egmaps_dir,'rb') as f:
@@ -54,7 +55,7 @@ class CustomAudioTextDataset(Dataset):
         # wav2vec2 embeddings
         wav2vec2_embeddings = self.w2v2[idx]
         # phonetic features
-        phonetic_features = self.phonemes[idx]
+        # phonetic_features = self.phonemes[idx]
         # bert embeddings
         bert_embeddings = self.bert_feats[idx]
         # egmaps features
@@ -92,7 +93,7 @@ class CustomAudioTextDataset(Dataset):
             'wav2vec2_embeddings' : torch.tensor(wav2vec2_embeddings,dtype=torch.float),
             'egmaps_feats' : torch.tensor(egmaps_feats,dtype=torch.float),
             'trill_embeddings' : torch.tensor(trill_embeddings,dtype=torch.float),
-            'phonetic_features' : torch.tensor(phonetic_features,dtype=torch.float),
+            # 'phonetic_features' : torch.tensor(phonetic_features,dtype=torch.float),
             'bert_embeddings' : torch.tensor(bert_embeddings,dtype=torch.float)
         }
         
@@ -106,7 +107,7 @@ def collate_fn(batch):
     wav2vec2_features = [item['wav2vec2_embeddings'] for item in features]
     egmap_features = [item['egmaps_feats'] for item in features]
     trill_features = [item['trill_embeddings'] for item in features]
-    phonetic_features = [item['phonetic_features'] for item in features]
+    # phonetic_features = [item['phonetic_features'] for item in features]
     bert_features = [item['bert_embeddings'] for item in features]
 
     # def normalize(features):
@@ -124,11 +125,11 @@ def collate_fn(batch):
     wav2vec2_features = pad_sequence(wav2vec2_features, batch_first=True)
     egmap_features = pad_sequence(egmap_features, batch_first=True)
     trill_features = pad_sequence(trill_features, batch_first=True)
-    phonetic_features = pad_sequence(phonetic_features, batch_first=True)
+    # phonetic_features = pad_sequence(phonetic_features, batch_first=True)
 
-    egmap_features = normalize(egmap_features)
-    trill_features = normalize(trill_features)
-    phonetic_features = normalize(phonetic_features)
+    # egmap_features = normalize(egmap_features)
+    # trill_features = normalize(trill_features)
+    # phonetic_features = normalize(phonetic_features)
     bert_features = torch.stack(bert_features)
 
 
@@ -140,7 +141,7 @@ def collate_fn(batch):
         'wav2vec2_features': wav2vec2_features,
         'egmap_features': egmap_features,
         'trill_features': trill_features,
-        'phonetic_features': phonetic_features,
+        # 'phonetic_features': phonetic_features,
         'bert_features' : bert_features
     }
     # total_batch_size_in_mb = calculate_batch_size_in_mb(feats)
@@ -161,8 +162,8 @@ def calculate_batch_size_in_mb(batch_features):
 
 def subsample_tensor(tensor,n=3):
     # Subsample by taking every nth time frame
-    tensor_subsampled = tensor[:, ::n, :]
-    #tensor_subsampled = F.avg_pool2d(tensor, kernel_size=(n, 1), stride=(n, 1))
+    # tensor_subsampled = tensor[:, ::n, :]
+    tensor_subsampled = F.avg_pool2d(tensor, kernel_size=(n, 1), stride=(n, 1))
     # conv = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(3, 3), stride=(3, 1))
     # mel_subsampled = conv(mel_features)
     return tensor_subsampled

@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import DataLoader
-from torch.optim import AdamW
+from torch.optim import AdamW, Adam
 from tqdm import tqdm
 from sklearn.metrics import f1_score, precision_score, recall_score,  mean_squared_error
 import numpy as np
@@ -8,26 +8,40 @@ import matplotlib.pyplot as plt
 import os
 from custom_losses import RMSELoss,ClassificationLoss,SimilarityLoss
 from custom_dataloader import collate_fn, subsample_tensor
+import math
+from torch.optim.lr_scheduler import LambdaLR
+import torch.optim as optim
+import math
+
+
 
 class Trainer:
-    def __init__(self, model, train_dataset, val_dataset, batch_size=8, learning_rate=1e-4, wt_decay=1e-3,device='cuda'):
+    def __init__(self, model, train_dataset, val_dataset, batch_size=8, learning_rate=1e-4, wt_decay=1e-3,device='cuda',epochs = 10,warmup_steps = 100,embed_dim = 80):
         self.model = model.to(device)
         total_params = sum(p.numel() for p in model.parameters())
         print(f"Total number of parameters in the model: {total_params}")
         self.device = device
         self.batch_size = batch_size
         self.learning_rate = learning_rate
-        
+        self.epochs = epochs
+        self.total_steps = math.ceil(350/self.batch_size) * self.epochs
+        self.warmup_steps = warmup_steps
+        print(f'Total training steps : {self.total_steps}')
         self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, collate_fn=collate_fn)
         self.val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, collate_fn=collate_fn)
-        
-        self.optimizer = AdamW(self.model.parameters(), lr=float(self.learning_rate),weight_decay=float(wt_decay))
+        self.embed_dim = embed_dim
+        self.optimizer = Adam(self.model.parameters(), lr=float(self.learning_rate),weight_decay=float(wt_decay))
+        # self.scheduler = TransformerLRSchedule(self.optimizer, model_dim=self.embed_dim, warmup_steps=self.warmup_steps)
+        # self.scheduler = self.create_scheduler()
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=5, T_mult=1, eta_min=1e-5)
+
         
         self.classification_criterion = ClassificationLoss()
         self.regression_criterion = RMSELoss()
         self.similarity_criterion = SimilarityLoss()
 
     def train(self):
+
         self.model.train()
         total_loss = 0
         total_classification_loss = 0
@@ -40,15 +54,15 @@ class Trainer:
             wav2vec2_features = subsample_tensor(batch_features['wav2vec2_features']).to(self.device)
             egmap_features = subsample_tensor(batch_features['egmap_features']).to(self.device)
             trill_features = subsample_tensor(batch_features['trill_features']).to(self.device)
-            phonetic_features = subsample_tensor(batch_features['phonetic_features']).to(self.device)
+            # phonetic_features = subsample_tensor(batch_features['phonetic_features']).to(self.device)
             bert_features = batch_features['bert_features'].to(self.device)
-
+            # add bert features in cross attention in place of phonetic
             classification_labels = classification_labels.to(self.device)
             regression_labels = regression_labels.to(self.device)
 
             self.optimizer.zero_grad()
 
-            logits, regression_output, speech_features = self.model(fbank_features,wav2vec2_features,egmap_features,trill_features,phonetic_features)
+            logits, regression_output, speech_features = self.model(fbank_features,wav2vec2_features,egmap_features,trill_features)
 
             classification_loss = self.classification_criterion(logits, classification_labels)
             regression_loss = self.regression_criterion(regression_output.squeeze(dim=1), regression_labels)
@@ -61,9 +75,10 @@ class Trainer:
             total_similarity_loss += similarity_loss.item()
 
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
 
             self.optimizer.step()
+            self.scheduler.step()
 
         avg_loss = total_loss / len(self.train_loader)
         avg_classification_loss = total_classification_loss / len(self.train_loader)
@@ -98,13 +113,13 @@ class Trainer:
                 wav2vec2_features = subsample_tensor(batch_features['wav2vec2_features']).to(self.device)
                 egmap_features = subsample_tensor(batch_features['egmap_features']).to(self.device)
                 trill_features = subsample_tensor(batch_features['trill_features']).to(self.device)
-                phonetic_features = subsample_tensor(batch_features['phonetic_features']).to(self.device)
+                # phonetic_features = subsample_tensor(batch_features['phonetic_features']).to(self.device)
                 bert_features = batch_features['bert_features'].to(self.device)
 
                 classification_labels = classification_labels.to(self.device)
                 regression_labels = regression_labels.to(self.device)
 
-                logits, regression_output, speech_features = self.model(fbank_features,wav2vec2_features,egmap_features,trill_features,phonetic_features)
+                logits, regression_output, speech_features = self.model(fbank_features,wav2vec2_features,egmap_features,trill_features)
 
                 classification_loss = self.classification_criterion(logits, classification_labels)
                 regression_loss = self.regression_criterion(regression_output.squeeze(dim=1), regression_labels)
@@ -146,12 +161,12 @@ class Trainer:
         print(f"Classification loss: {avg_classification_loss:.4f}")
         print(f"Regression loss: {avg_regression_loss:.4f}")
         print(f"Similarity loss: {avg_similarity_loss:.4f}")
-        print(f"Accuracy: {accuracy:.4f}")
+        print(f"Accuracy: {accuracy*100:.4f}%")
         print(f"RMSE: {rmse:.4f}")
-        print(f"Macro F1: {macro_f1:.4f}")
-        print(f"Macro Precision: {precision:.4f}")
-        print(f"Macro Recall: {recall:.4f}")
-        print(f"Weighted F1 Score: {f1:.4f}")
+        print(f"Macro F1: {macro_f1*100:.4f}%")
+        print(f"Macro Precision: {precision*100:.4f}%")
+        print(f"Macro Recall: {recall*100:.4f}%")
+        print(f"Weighted F1 Score: {f1*100:.4f}%")
 
         return avg_loss, avg_classification_loss, avg_regression_loss, avg_similarity_loss
 
@@ -222,3 +237,25 @@ class Trainer:
         else:
             print(f"No checkpoint found at {path}")
 
+    def lr_lambda(self,current_step: int):
+        if current_step < self.warmup_steps:
+            # Linearly warm up from 3e-4 to 4e-3
+            return (4e-3 / 3e-4) * (current_step / self.warmup_steps)
+        else:
+            # Decay from 4e-3 to 2e-5 after warmup
+            decay_factor = (2e-5 / 4e-3)
+            return decay_factor ** ((current_step - self.warmup_steps) / (self.total_steps - self.warmup_steps))
+
+    def create_scheduler(self):
+        return LambdaLR(self.optimizer, lr_lambda=lambda step: self.lr_lambda(step))
+    
+class TransformerLRSchedule(optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, model_dim, warmup_steps, last_epoch=-1):
+        self.model_dim = model_dim
+        self.warmup_steps = warmup_steps
+        super(TransformerLRSchedule, self).__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        step = max(1, self._step_count)
+        scale = self.model_dim ** -0.5 * min(step ** -0.5, step * self.warmup_steps ** -1.5)
+        return [base_lr * scale for base_lr in self.base_lrs]
